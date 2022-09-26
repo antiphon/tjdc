@@ -1,0 +1,15 @@
+Package: tjdc
+Type: Package
+Title: Trends and Jumps in DataCubes
+Version: 0.2-0
+Author: Tuomas Rajala
+Maintainer: Tuomas Rajala <tuomas.rajala@iki.fi>
+Description: Statistical tools for detecting pixel level trends and sudden jumps in time-series data (aka 'datacubes')
+  given in starts-class data cubes. The focus is on short timeserieses and improving the detection by
+  incorporating information from neighbour pixels.
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
+Imports: Rcpp (>= 1.0.9)
+LinkingTo: Rcpp
+RoxygenNote: 7.2.0
