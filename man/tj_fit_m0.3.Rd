@@ -7,6 +7,9 @@
 tj_fit_m0.3(
   x,
   niter = 1000,
+  timevar = "z",
+  attrvar = "values",
+  dat = NULL,
   gamma = 0,
   prior_theta = list(m = c(a = 0, b = 0, d = 0), S = diag(1e+05 * c(1, 1, 1))),
   prior_sigma2 = c(shape = 2, rate = 1),
@@ -16,9 +19,6 @@ tj_fit_m0.3(
   keep_hist = TRUE,
   cells_to_ignore = NULL,
   ignore_cells_with_na = TRUE,
-  timevar = "z",
-  attrvar = "values",
-  dat = NULL,
   truncate_jump_at_mean = 0,
   ...
 )
@@ -28,11 +28,13 @@ tj_fit_m0.3(
 
 \item{niter}{number of gibbs sampler interations}
 
-\item{prior_k}{prior jump probabilities. Either a vector (will be normalised) or a single value for the probability of jump somewhere.}
-
 \item{dat}{prepared data frame (for development, please dont use).}
 
-\item{truncate_jump_at_mean}{use a truncated normal prior for the jump? Will truncate at prior mean, sign says which side to keep.}
+\item{prior_k}{prior jump probabilities. Either a vector (will be normalised) or a single value for the probability of jump somewhere.}
+
+\item{keep_hist}{If TRUE, keep the mcmc trajectories of all variables. If vector of cell indices, keep history for only those (to save space). Give at least 2 cell-indices or logical, otherwise unexpected behaviour. (default: FALSE).}
+
+\item{truncate_jump_at_mean}{use a truncated normal prior for the jump? Will truncate at prior mean ad-hoc, sign says which side to keep.}
 
 \item{...}{ignored}
 }

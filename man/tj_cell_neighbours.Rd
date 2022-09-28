@@ -4,22 +4,23 @@
 \alias{tj_cell_neighbours}
 \title{Raster Cell Neighbourhoods}
 \usage{
-tj_cell_neighbours(i, nr, nc)
+tj_cell_neighbours(i, nr, nc, ...)
 }
 \arguments{
 \item{i}{focal cell}
 
-\item{nr}{number of rows in the xy-raster}
+\item{nr}{number of rows in the xy-grid}
 
-\item{nc}{number of columns in the xy-raster}
+\item{nc}{number of columns in the xy-grid}
+
+\item{...}{ignored}
 }
 \description{
 Raster Cell Neighbourhoods
 }
 \details{
-Non-toroidal.
+Non-toroidal, 8 nearest aka queen neighbours.
 
-NOTE we assume that the cell indices go first row then col, i.e. cell=1,2,3... are (row,col) (1,1), (1,2), (1,3)...
-AND  we assume that rows go in "bottom to top" fashion in persieved y-dimension. Make sure data is like this! Stars::as_tibble
-might have negative dimension deltas.
+Will assume cell-numbering
+cell = col + (row-1) * ncol.
 }

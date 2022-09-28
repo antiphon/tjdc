@@ -1,18 +1,18 @@
 #' Raster Cell Neighbourhoods
 #'
 #' @param i focal cell
-#' @param nr number of rows in the xy-raster
-#' @param nc number of columns in the xy-raster
+#' @param nr number of rows in the xy-grid
+#' @param nc number of columns in the xy-grid
+#' @param ... ignored
 #'
 #' @details
-#' Non-toroidal.
+#' Non-toroidal, 8 nearest aka queen neighbours.
 #'
-#' NOTE we assume that the cell indices go first row then col, i.e. cell=1,2,3... are (row,col) (1,1), (1,2), (1,3)...
-#' AND  we assume that rows go in "bottom to top" fashion in persieved y-dimension. Make sure data is like this! Stars::as_tibble
-#' might have negative dimension deltas.
+#' Will assume cell-numbering
+#' cell = col + (row-1) * ncol.
 #'
-#'
-tj_cell_neighbours <- function(i, nr, nc) {
+#' @export
+tj_cell_neighbours <- function(i, nr, nc, ...) {
 
   rc2i <- function(rc, nr, nc) {
     rc <- rbind(rc)
@@ -20,9 +20,8 @@ tj_cell_neighbours <- function(i, nr, nc) {
   }
   i2rc <- function(i, nr, nc) {
     r  <- ceiling( i/nc )
-    cbind(r=r, c = i - (r-1)*nc)
+    cbind(r = r, c = i - (r-1)*nc)
   }
-  # target (c,r)
   rc <- i2rc(i, nr, nc)
   rcn <- cbind(c(-1, 0, 1, -1, 1, -1, 0, 1),
                c(-1, -1, -1, 0, 0, 1, 1, 1))
@@ -35,4 +34,3 @@ tj_cell_neighbours <- function(i, nr, nc) {
   if(length(o)) o[[1]]
   else o
 }
-

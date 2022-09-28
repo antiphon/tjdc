@@ -2,10 +2,17 @@
 % Please edit documentation in R/summarise_m0.3.R
 \name{summarise_m0.3}
 \alias{summarise_m0.3}
-\title{Summarise fit of M0.3}
+\title{Summarise fit of M0.3 as stars-objects}
 \usage{
-summarise_m0.3(x, ...)
+summarise_m0.3(x, ..., cells, burnin, thin_steps)
+}
+\arguments{
+\item{x}{object fitted by this package's tj_fit_m0.3}
+
+\item{burnin}{if mcmc traces included (`keep_hist` was not false), recalculate summaries using the iteration vector (burnin*nsteps):nsteps}
+
+\item{thin_steps}{take only every `thin_steps` from the iteration vector}
 }
 \description{
-Summarise fit of M0.3
+Summarise fit of M0.3 as stars-objects
 }

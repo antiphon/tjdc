@@ -7,7 +7,8 @@
 #' @param niter number of gibbs sampler interations
 #' @param prior_k prior jump probabilities. Either a vector (will be normalised) or a single value for the probability of jump somewhere.
 #' @param dat prepared data frame (for development, please dont use).
-#' @param truncate_jump_at_mean use a truncated normal prior for the jump? Will truncate at prior mean, sign says which side to keep.
+#' @param keep_hist If TRUE, keep the mcmc trajectories of all variables. If vector of cell indices, keep history for only those (to save space). Give at least 2 cell-indices or logical, otherwise unexpected behaviour. (default: FALSE).
+#' @param truncate_jump_at_mean use a truncated normal prior for the jump? Will truncate at prior mean ad-hoc, sign says which side to keep.
 #' @param ... ignored
 #'
 #' @details We assume the datacube holds for each pixel (x-y) a series of values (`attrvar`) in time (`timevar`).
@@ -17,12 +18,15 @@
 #' means no jump is predicted.
 #'
 #'
-#' @import looptimer
+#' @import looptimer dplyr
 #' @export
 
 
 tj_fit_m0.3 <- function(x,
                         niter = 1000,
+                        timevar = "z",
+                        attrvar = "values",
+                        dat = NULL, # make sure you know what you are doing here!
                         gamma = 0,
                         prior_theta  = list(m = c(a=0, b=0, d = 0),
                                             S = diag(1e5*c(1, 1, 1))),
@@ -33,9 +37,6 @@ tj_fit_m0.3 <- function(x,
                         keep_hist = TRUE,
                         cells_to_ignore = NULL,
                         ignore_cells_with_na  =  TRUE,
-                        timevar = "z",
-                        attrvar = "values",
-                        dat = NULL, # make sure you know what you are doing here!
                         truncate_jump_at_mean = 0,
                         ... # ignored
 ) {
@@ -46,56 +47,68 @@ tj_fit_m0.3 <- function(x,
   #
   # Prepare input:
   # stars to data frame
-  dat <- if(is.null(dat)) tj_stars_to_data(x, timevar, attrvar) else dat
+  if(is.null(dat)) dat <- tj_stars_to_data(x, timevar, attrvar)
+  # check that we have expected names in the dat
+  gdims <- attr(dat, "grid")
+  if( !all(c("cell", "time", "value") %in% names(dat))  | is.null(gdims))
+    stop("'dat' ill formatted. need at least cell, time, value-columns, and `gdims` attribute. See `tj_stars_to_data`. ")
   #
   #
-  # x = time
-  # y(x) = value of the series at time x
   #
   #
   # assume complete rectangular grid.
-  nrc <- attr(dat, "grid")
-  nr <- nrc['nrow']
-  nc <- nrc['ncol']
+  nr <- gdims['nrow']
+  nc <- gdims['ncol']
+  cells <- unique(dat$cell)
+  if(length(keep_hist) > 1) if(!all(keep_hist %in% cells)) stop("Input error: keep_hist")
+  #
   n <- nr * nc # the complete raster
   nlist <-  if(gamma != 0)  lapply(1:n, tj_cell_neighbours, nr = nr, nc = nc) else vector("list", n)
-  # this is assumed raster cell numbering.
+
+  ####################################################################################
   # Check for missing values and ignore them?
   if(ignore_cells_with_na) {
     # check which have na and flag them
     bad <- dat |>
-      dplyr::arrange(cell, x) |>
+      dplyr::arrange(cell, time) |>
       dplyr::group_by(cell) |>
-      dplyr::summarise(n_na = sum(is.na(y))) |>
+      dplyr::summarise(n_na = sum(is.na(value))) |>
       dplyr::filter(n_na > 0)
     cells_to_ignore <- union(cells_to_ignore, bad$cell)
   }
   # These cells will be in play.
-  cells_to_consider <- setdiff(unique(dat$cell), cells_to_ignore)
+  cells_to_consider <- setdiff(cells, cells_to_ignore)
   # remove the unwanted from neighbourhoods
   if(!is.null(cells_to_ignore)) nlist <- lapply(nlist, setdiff, cells_to_ignore)
   #
-  # only relevant
-  dat <- dat |> filter(cell %in% cells_to_consider) |>
-    arrange(cell, x)
-  # Check for hermits
+  # Keep only relevant, and arrange by cell and then time.
+  dat <- dat |>
+    filter(cell %in% cells_to_consider) |>
+    arrange(cell, time)
+  ####################################################################################
+  # Check for hermits. These will need to be known to avoid subsetting G with numeric(0)
   nnsizes <- sapply(nlist, length)
-  #if(any(nnsizes == 0)) warning("Some isolated pixels. Call the developer.")
   #
-  # format data into a matrix
-  xsteps <- sort( unique(dat$x) )
-  K <- length(xsteps)  # assuming all same length
-  y <- dat$y  #
+  #
+  # format value-data into a matrix:
+
+  timesteps <- sort( unique(dat$time) )
+  K <- length(timesteps)  # assuming all same length
   Y <- matrix(ncol = n, nrow = K)
-  Y[, cells_to_consider] <- dat$y
-  N <- length(y)
+  #browser()
+  # This is very crusial step here! Make sure dat is in the right order.
+  Y[, cells_to_consider] <- dat$value
+  N <- nrow(dat)
+  #browser()
+  ##########################################
   # priors
   if(length(prior_k) == 1) prior_k <- c( rep(1, K-1), (K-1) * (1-prior_k)/prior_k )
   prior_k <- rep(prior_k, K)[1:K]
   prior_k <- prior_k / sum(prior_k)
 
+  ##########################################
   # Precompute for linear stuff
-  X <- cbind(1, xsteps)
+  X <- cbind(1, timesteps)
   X1_list <- lapply(1:K, \(k) cbind(X, rep(0:1, c(k,K-k))) )
   tX1_list <- lapply(X1_list, t)
   tX1X1_list <- lapply(X1_list, \(x1) t(x1)%*%x1)
@@ -217,7 +230,12 @@ tj_fit_m0.3 <- function(x,
   # post_thetam_m[cells_to_ignore ] <- NA
 
   # remove trace objects if not needed
-  if(!keep_hist) {
+  if(length(keep_hist) > 1) {
+    history_k <- history_k[, keep_hist, drop = FALSE]
+    history_z <- history_z[, keep_hist, drop = FALSE]
+    history_theta <- history_theta[, keep_hist, , drop = FALSE]
+  }
+  else if(!keep_hist) { # drop all
     history_k <- NULL
     history_z <- NULL
     history_theta <- NULL
@@ -225,7 +243,7 @@ tj_fit_m0.3 <- function(x,
   }
 
 
-  list(took = Sys.time() - t0,
+  out <- list(took = Sys.time() - t0,
        k = post_k,
        z = post_z,
        theta_m  = post_theta_m,
@@ -235,13 +253,17 @@ tj_fit_m0.3 <- function(x,
        hist_z = history_z,
        hist_theta = history_theta,
        hist_sigma2 = history_sigma2,
+       keep_hist = keep_hist,
        niter = niter,
-       cell_info  = dat[ dat$x == xsteps[1], c("cell", "c_x", "c_y")],
+       cell_info  = dat[ dat$time == timesteps[1], c("cell", "c_x", "c_y")],
+       timesteps = timesteps,
        ctrl = ctrl,
+       gdims = gdims,
        truncate_jump_at_mean = truncate_jump_at_mean,
        cells_ignored = cells_to_ignore)
 
-
+  class(out) <- c(is(out), "tj_fit_mc")
+  out
 }
 
 

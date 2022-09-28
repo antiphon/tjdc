@@ -16,7 +16,7 @@
 tj_fit_m0.3_dac <- function(x,
                             timevar = "z",
                             attrvar = "values",
-                            dat = NULL, # alternative to x, timavar, attrvar
+                            dat = NULL, # alternative to x, timevar, attrvar
                             prior_theta  = list(m = c(a=0, b=0, d=0),
                                                 S = diag(c(1, 1, 1)*1e5)),
                             prior_sigma2 = c(shape = 2, rate = 1), # inv-gamma
@@ -49,13 +49,17 @@ tj_fit_m0.3_dac <- function(x,
 
   #
   if(is.null(dat)) dat <- tj_stars_to_data(x, timevar, attrvar)
+  # check that we have expected names in the dat
+  gdims <- attr(dat, "grid")
+  if( !all(c("cell", "time", "value") %in% names(dat))  | is.null(gdims))
+    stop("'dat' ill formatted. need at least cell, time, value-columns, and `gdims` attribute. See `tj_stars_to_data`. ")
   #
   t0 <- Sys.time()
-  cells <- unique(dat$cell)
+  cells <- 1:prod(gdims)
   nsubsets <- length(subsets)
   #
-  rnc <- length(unique(dat$col))
-  rnr <- length(unique(dat$row))
+  rnc <- gdims['ncol']
+  rnr <- gdims['nrow']
 
   # Ball up parameters
   .mcpars <<- list(prior_sigma2 = prior_sigma2,
@@ -69,7 +73,8 @@ tj_fit_m0.3_dac <- function(x,
                    keep_hist = keep_history,
                    truncate_jump_at_mean = truncate_jump_at_mean)
 
-  .fitter <<- tj_fit_m0.3 #get( sprintf("%s_m0.3", if(method == "mc") "mcmc" else "vb") )
+  # Choose model to fit:
+  .fitter <<- tj_fit_m0.3
   .subsets <<- subsets
   #
   ###############################
@@ -81,14 +86,11 @@ tj_fit_m0.3_dac <- function(x,
         j <- subsets[[subset_i]]
         di <- .datx |>
           subset(cell %in% j) |>
-          transmute(
+          mutate(
             oldcell  = cell,
-            c_x   = c_x,
-            c_y   = c_y,
             row   = factor(row) |> as.integer(),
             col   = factor(col) |> as.integer(),
-            cell  = factor(oldcell) |> as.integer(),
-            x, y)
+            cell  = col + (row-1) * max(col))
         #
         # solve the cells to ignore parameter
         cma <- di |> filter(x == x[1])
@@ -106,6 +108,8 @@ tj_fit_m0.3_dac <- function(x,
                         keep_hist   = .mcpars$keep_hist,
                         truncate_jump_at_mean = .mcpars$truncate_jump_at_mean,
                         ctrl = .mcpars$ctrl)
+        # Add old cell index
+        fit1$cell_mapping <- di |> filter(time == time[1]) |> select(cell, oldcell)
         # for now
         fit1
   }
@@ -189,6 +193,91 @@ tj_fit_m0.3_dac <- function(x,
 }
 
 
+
+###############################################
+#' Stitch a mosaic model fit
+#'
+#' Average overlapping regions' pixel estimates. Version 2, use included cell mappings.
+#'
+#' @import dplyr
+#' @export
+
+tj_stitcher_m0.5_v1.2 <- function(list_of_fits, subsets) {
+  stop("Not finished.")
+  # figure out which have repeats
+  cell_map <- lapply(seq_along(list_of_fits), \(si) list_of_fits[[si]]$cell_mapping |>
+                       mutate(subset = si)) |>
+    bind_rows()
+  #
+  cell_stats <- cell_map |> group_by(oldcell) |> count()
+  allcells    <- unlist(cell_map$oldcell)
+  ncells      <- max(allcells)
+  cellcount   <- tabulate(allcells, ncells)
+  est_cells  <- which(cellcount > 0) # which cells do we actually have in subsets
+  are_repeated_txt      <- which(cellcount > 1) |> as.character()
+  are_repeated          <- are_repeated_txt  |> as.integer()
+  are_repeated_idx      <- match( are_repeated, est_cells )
+  not_repeated_sets     <- lapply(subsets, setdiff, are_repeated)
+  not_repeated_sets_idx <- lapply(not_repeated_sets, match, est_cells)
+  #
+  # Do global variables separate, here the pixelwises
+  vars <- c("k", "z", "theta_m")
+  posts <- list()
+  #browser()
+  for(var in vars) {
+    # Go first for the non-repeated
+    V1 <- lapply(seq_along(subsets), \(si) {
+      ss_idx          <- match( not_repeated_sets[[si]], subsets[[si]]  )
+      o               <- rbind(list_of_fits[[si]][[var]])[,ss_idx]
+      attr(o, "cidx") <- not_repeated_sets[[si]]
+      o
+    })
+    # then for the repeated:
+    Vx <- lapply(seq_along(subsets), \(si) {
+      idx    <- which(are_repeated %in% subsets[[si]])
+      ss_idx <- match(are_repeated[idx], subsets[[si]]  )
+      o      <- rbind(list_of_fits[[si]][[var]])[,ss_idx, drop=FALSE]
+      attr(o, "cidx") <- are_repeated[idx]
+      o
+    })
+    # gather
+    V <- matrix(NA, nrow = nrow( rbind( list_of_fits[[1]][[var]] ) ), ncol = ncells)
+    for(si in seq_along(subsets)) {
+      V[, attr( V1[[si]], "cidx" )] <- V1[[si]]
+      # And then: pointwise means
+      if(length(are_repeated)) { ###
+        r_c <- attr( Vx[[si]], "cidx" )
+        p1  <- V[, r_c] # old
+        p2  <- Vx[[si]]
+        # for averaging
+        nc <- x[r_c]
+        p2 <- t( t(p2)/nc )
+        #
+        p12 <- list(p1, p2) |> simplify2array()
+        ndi <- length(dim(p12))
+
+        # Average, but only those that are not completely NA
+        m_m <- apply(p12, 1:(ndi-1), \(v) if(all(is.na(v))) NA else sum(v, na.rm=TRUE))
+        # store
+        V[, attr( Vx[[si]], "cidx" )] <- m_m
+      }
+    }
+    # and mean
+
+    posts[[var]] <- V
+  }
+  #
+  posts$sigma2        <- sapply(list_of_fits, getElement, "sigma2") |> t() |> colMeans()
+  posts$took          <- mean(lapply(list_of_fits, getElement, "took") |>
+                         sapply(as.numeric, units = "secs")) |> as.difftime(units = "secs") # arbitrary
+  posts$hist_sigma2   <- sapply(list_of_fits, getElement, "hist_sigma2")
+  posts$cells         <- est_cells
+  posts$cells_in_many <- are_repeated
+  posts
+}
+
+
+
 ###############################################
 #' Stitch a mosaic model fit
 #'
@@ -209,23 +298,22 @@ tj_stitcher_m0.5_v1.1 <- function(list_of_fits, subsets) {
   not_repeated_sets     <- lapply(subsets, setdiff, are_repeated)
   not_repeated_sets_idx <- lapply(not_repeated_sets, match, est_cells)
   #
-
-
   # Do global variables separate, here the pixelwises
   vars <- c("k", "z", "theta_m")
   posts <- list()
+  #browser()
   for(var in vars) {
     # Go first for the non-repeated
     V1 <- lapply(seq_along(subsets), \(si) {
-      ss_idx <- match( not_repeated_sets[[si]], subsets[[si]]  )
-      o      <- rbind(list_of_fits[[si]][[var]])[,ss_idx]
+      ss_idx          <- match( not_repeated_sets[[si]], subsets[[si]]  )
+      o               <- rbind(list_of_fits[[si]][[var]])[,ss_idx]
       attr(o, "cidx") <- not_repeated_sets[[si]]
       o
     })
     # then for the repeated:
     Vx <- lapply(seq_along(subsets), \(si) {
       idx    <- which(are_repeated %in% subsets[[si]])
-      ss_idx <- match( are_repeated[idx], subsets[[si]]  )
+      ss_idx <- match(are_repeated[idx], subsets[[si]]  )
       o      <- rbind(list_of_fits[[si]][[var]])[,ss_idx, drop=FALSE]
       attr(o, "cidx") <- are_repeated[idx]
       o
@@ -245,8 +333,10 @@ tj_stitcher_m0.5_v1.1 <- function(list_of_fits, subsets) {
         #
         p12 <- list(p1, p2) |> simplify2array()
         ndi <- length(dim(p12))
-        #browser()
-        m_m <- apply(p12, 1:(ndi-1), sum, na.rm=TRUE)
+
+        # Average, but only those that are not completely NA
+        m_m <- apply(p12, 1:(ndi-1), \(v) if(all(is.na(v))) NA else sum(v, na.rm=TRUE))
+        # store
         V[, attr( Vx[[si]], "cidx" )] <- m_m
       }
     }

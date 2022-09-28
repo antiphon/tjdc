@@ -8,7 +8,27 @@ tj_stars_to_data(x, timevar = "z", attrvar = "values")
 }
 \arguments{
 \item{x}{stars object}
+
+\item{timevar}{which dimension is time}
+
+\item{attrvar}{which attribute to keep}
+}
+\value{
+A tibble with variables `c_x`, `c_y` for spatial coordinates and `time` for temporal coordinates,
+`col,row` for  the top-bottom - left-right indices in the data matrix,
+`cell` as described above, and `value` for the values of the chosen attribute.
+
+The output also has an attribute grid=c(nrow, ncol).
 }
 \description{
-Process input stars to legacy data format
+Convert stars object into a tibble with variable names recogniced by the fitters.
+}
+\details{
+This is essentially a wrapper for the as_tibble-method of stars-objects. The difference
+is that only one attribute will be kept, chosen with `attrvar`. We assume that
+spatial dimensions have names 'x' and 'y', and time dimension is defined by `timevar`.
+
+The function adds a cell number in the same way `terra::as.data.frame` does:
+Spatially top-to-bottom, then left to right. That means cell=1 is for the cell with
+coordinate (min(x), max(y)), and last cell is (max(x), min(y)).
 }
