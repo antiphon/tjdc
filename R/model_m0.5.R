@@ -37,7 +37,7 @@ tj_fit_m0.3_dac <- function(x,
                             just_fit = !is.null(fitpath), # do not parse? Only makes sense with
                             keep_all_in_memory = TRUE, # keep all fits in memory? Only works under fitpath given
                             recalc = FALSE, # incase find already fit pieces
-                            keep_history = FALSE # keep MCMC history? Will increase file size (niter+1) times.
+                            keep_hist = FALSE # keep MCMC history? Will increase file size (niter+1) times.
 
 ) {
   #
@@ -70,7 +70,7 @@ tj_fit_m0.3_dac <- function(x,
                    rnr = rnr, ctrl = ctrl,
                    rnc = rnc,
                    cells_to_ignore = cells_to_ignore,
-                   keep_hist = keep_history,
+                   keep_hist = keep_hist,
                    truncate_jump_at_mean = truncate_jump_at_mean)
 
   # Choose model to fit:
