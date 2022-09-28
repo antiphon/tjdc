@@ -11,7 +11,7 @@ tj_fit_m0.3_dac(
   dat = NULL,
   prior_theta = list(m = c(a = 0, b = 0, d = 0), S = diag(c(1, 1, 1) * 1e+05)),
   prior_sigma2 = c(shape = 2, rate = 1),
-  prior_k,
+  prior_k = 0.5,
   gamma = 0,
   verbose = TRUE,
   dbg = FALSE,
@@ -35,7 +35,7 @@ tj_fit_m0.3_dac(
 \arguments{
 \item{x}{stars datacube}
 
-\item{subsets}{st-polygons defining the subsets.}
+\item{subsets}{list of cell indices}
 
 \item{...}{ignored}
 }

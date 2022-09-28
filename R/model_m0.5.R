@@ -3,7 +3,7 @@
 #' Split datacube into sub-rasters, fit model 0.3's, and stitch together. Divide-and-conquer.
 #'
 #' @param x stars datacube
-#' @param subsets st-polygons defining the subsets.
+#' @param subsets list of cell indices
 #' @param ... ignored
 #'
 #' @details
@@ -20,7 +20,7 @@ tj_fit_m0.3_dac <- function(x,
                             prior_theta  = list(m = c(a=0, b=0, d=0),
                                                 S = diag(c(1, 1, 1)*1e5)),
                             prior_sigma2 = c(shape = 2, rate = 1), # inv-gamma
-                            prior_k,
+                            prior_k = 0.5,
                             gamma = 0,
                             verbose = TRUE, dbg=FALSE,
                             method = "mc",
@@ -93,7 +93,6 @@ tj_fit_m0.3_dac <- function(x,
             cell  = col + (row-1) * max(col))
         #
         # solve the cells to ignore parameter
-        cma <- di |> filter(x == x[1])
         # make sure to drop the dimensions down to save memory
         attr(di, "gdims") <- c(nrow = max(di$row), ncol = max(di$col))
         #
@@ -377,36 +376,6 @@ tj_stitcher_m0.5_v1.1 <- function(list_of_fits, subsets) {
   posts$timesteps <- list_of_fits[[1]]$timesteps
 
   posts
-}
-
-
-
-################################################################
-#' Divide bounding box into subsets, return polygons
-#'
-#' Divide both sides by a factor 2^q
-#'
-#' @import sf
-#' @export
-tj_divide_bbox <- function(bb,
-                        power_of_2 = 2,
-                        q = power_of_2,
-                        expand = 0 ) {
-
-  poly3 <- bb |> st_as_sfc()
-  # Buffer?
-  ex <- expand
-  bb3 <- bb
-  # shift
-  poly30 <- poly3 - bb3[c(1,2)]
-  factr  <- 1/(2^q/(1+2*ex))
-  polytmpl <- poly30 * factr - c(bb3[3]-bb3[1], bb3[4]-bb3[2])*ex * factr # corner in
-  # shifts
-  n <- 2^q+1
-  crns <- expand.grid(seq(bb3[1], bb3[3], l = n)[-n], seq(bb3[2], bb3[4], l = n)[-n])
-  polys <- apply(crns, 1, \(s) polytmpl + s) |> do.call(what = c) |> st_as_sf( crs = st_crs(poly3)) |>
-    mutate(id = sprintf("%04i", 1:n()) )
-  polys
 }
 
 

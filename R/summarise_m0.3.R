@@ -38,8 +38,8 @@ summarise_m0.3 <- function(x, ..., cells, burnin, thin_steps) {
   pred <- x$cell_info |>
     filter(cell %in% cells) |>
     mutate(
-      theta_mean = post_theta_m |> as_tibble() |>setNames(c("a","b","d")),
-      theta_sd  = post_theta_sd |> as_tibble() |> setNames(c("a","b","d")),
+      theta_mean = post_theta_m |> as_tibble(.name_repair = "unique") |> setNames(c("a","b","d")),
+      theta_sd  = post_theta_sd |> as_tibble(.name_repair = "unique") |> setNames(c("a","b","d")),
       pred_jump_prob = post_z,
       pred_jump_mode = apply(post_k, 2, which.max),
       pred_jump_prob_at_mode = apply(post_k, 2, max)

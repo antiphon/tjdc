@@ -25,7 +25,7 @@ af <- tj_fit_m0.3_dac(r,
                  prior_k = 0.5,
                  subsets = subsets,
                  verbose = TRUE,
-                 niter = 1000,
+                 niter = 10,
                  ncores = 8,
                  keep_hist = TRUE,
                  just_fit = TRUE
