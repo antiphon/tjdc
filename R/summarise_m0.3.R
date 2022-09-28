@@ -1,4 +1,4 @@
-#' Summarise fit of M0.3 as stars-objects
+#' Summarise fit of M0.3 as a tibble
 #'
 #' @param x object fitted by this package's tj_fit_m0.3
 #' @param burnin if mcmc traces included (`keep_hist` was not false), recalculate summaries using the iteration vector (burnin*nsteps):nsteps
@@ -48,8 +48,6 @@ summarise_m0.3 <- function(x, ..., cells, burnin, thin_steps) {
   attr(pred, "timesteps") <- x$timesteps
   pred
 }
-
-
 
 
 

@@ -94,7 +94,8 @@ tj_fit_m0.3_dac <- function(x,
         #
         # solve the cells to ignore parameter
         cma <- di |> filter(x == x[1])
-        #cells_to_ignore <- cma$cell[ match(.mcpars$cells_to_ignore, cma$oldcell) |> na.omit() ]
+        # make sure to drop the dimensions down to save memory
+        attr(di, "gdims") <- c(nrow = max(di$row), ncol = max(di$col))
         #
         #browser()
         fit1 <- .fitter(dat         = di,
@@ -266,6 +267,18 @@ tj_stitcher_m0.5_v1.2 <- function(list_of_fits, subsets) {
 
     posts[[var]] <- V
   }
+  # Gather cell information, remapping to original cell indices.
+  cinfo <- lapply(seq_along(list_of_fits), \(i) {
+    f <- list_of_fits[[i]]
+    f$cell_info |> left_join(f$cell_mapping, by = "cell") |> mutate(subset_cell = cell,
+                                                                    cell = oldcell,
+                                                                    subset = i,
+                                                                    oldcell = NULL)
+  }) |>
+    bind_rows() |>
+    group_by(cell)
+
+
   #
   posts$sigma2        <- sapply(list_of_fits, getElement, "sigma2") |> t() |> colMeans()
   posts$took          <- mean(lapply(list_of_fits, getElement, "took") |>
@@ -344,6 +357,15 @@ tj_stitcher_m0.5_v1.1 <- function(list_of_fits, subsets) {
 
     posts[[var]] <- V
   }
+  # Gather cell information, remapping to original cell indices.
+  cinfo <- lapply(seq_along(list_of_fits), \(i) {
+    f <- list_of_fits[[i]]
+    f$cell_info |> left_join(f$cell_mapping, by = "cell") |> mutate(subset_cell = cell,
+                                                                    cell = oldcell,
+                                                                    subset = i,
+                                                                    oldcell = NULL)
+  }) |>
+    bind_rows()
   #
   posts$sigma2 <- sapply(list_of_fits, getElement, "sigma2") |> t() |> colMeans()
   posts$took   <- mean(lapply(list_of_fits, getElement, "took") |>
@@ -351,6 +373,9 @@ tj_stitcher_m0.5_v1.1 <- function(list_of_fits, subsets) {
   posts$hist_sigma2 <- sapply(list_of_fits, getElement, "hist_sigma2")
   posts$cells  <- est_cells
   posts$cells_in_many <- are_repeated
+  posts$cell_info <- cinfo
+  posts$timesteps <- list_of_fits[[1]]$timesteps
+
   posts
 }
 

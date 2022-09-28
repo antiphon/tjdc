@@ -29,7 +29,7 @@ tj_fit_m0.3_dac(
   just_fit = !is.null(fitpath),
   keep_all_in_memory = TRUE,
   recalc = FALSE,
-  keep_history = FALSE
+  keep_hist = FALSE
 )
 }
 \arguments{

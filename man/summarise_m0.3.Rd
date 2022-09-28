@@ -2,7 +2,7 @@
 % Please edit documentation in R/summarise_m0.3.R
 \name{summarise_m0.3}
 \alias{summarise_m0.3}
-\title{Summarise fit of M0.3 as stars-objects}
+\title{Summarise fit of M0.3 as a tibble}
 \usage{
 summarise_m0.3(x, ..., cells, burnin, thin_steps)
 }
@@ -14,5 +14,5 @@ summarise_m0.3(x, ..., cells, burnin, thin_steps)
 \item{thin_steps}{take only every `thin_steps` from the iteration vector}
 }
 \description{
-Summarise fit of M0.3 as stars-objects
+Summarise fit of M0.3 as a tibble
 }
