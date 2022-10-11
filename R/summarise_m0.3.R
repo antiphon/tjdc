@@ -6,7 +6,7 @@
 #'
 #' @import stars dplyr
 #' @export
-summarise_m0.3 <- function(x, ..., cells, burnin, thin_steps) {
+tj_summarise_m0.3 <- function(x, ..., cells, burnin, thin_steps) {
 
   if(missing(cells)) cells <- x$cell_info$cell # do alla
   # in case we re-summarise:
@@ -59,7 +59,7 @@ summarise_m0.3 <- function(x, ..., cells, burnin, thin_steps) {
 #'
 #' @import dplyr
 #' @export
-predict_m0.3 <- function(x, cells, ..., s) {
+tj_predict_m0.3 <- function(x, cells, ..., s) {
   #
   if(missing(s)) s <- summarise_m0.3(x, cells = cells, ...)
   # Modes
@@ -99,7 +99,7 @@ predict_m0.3 <- function(x, cells, ..., s) {
 #' @import dplyr
 #' @export
 
-trace_m0.3 <- function(x, cell, ...) {
+tj_trace_m0.3 <- function(x, cell, ...) {
   h <- x$keep_hist
   if(is.null(x$hist_k)) stop("Model not estimated with keep_hist = TRUE")
   th <- x$hist_theta[,cell,] |>

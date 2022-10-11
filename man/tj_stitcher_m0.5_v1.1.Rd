@@ -7,5 +7,5 @@
 tj_stitcher_m0.5_v1.1(list_of_fits, subsets)
 }
 \description{
-Average overlapping regions' pixel estimates.
+Average overlapping regions' pixel estimates. Old format.
 }

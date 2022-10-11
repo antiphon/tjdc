@@ -6,10 +6,10 @@
 \usage{
 tj_fit_m0.3(
   x,
-  niter = 1000,
+  dat = NULL,
   timevar = "z",
   attrvar = "values",
-  dat = NULL,
+  niter = 1000,
   gamma = 0,
   prior_theta = list(m = c(a = 0, b = 0, d = 0), S = diag(1e+05 * c(1, 1, 1))),
   prior_sigma2 = c(shape = 2, rate = 1),
@@ -26,9 +26,9 @@ tj_fit_m0.3(
 \arguments{
 \item{x}{input stars object}
 
-\item{niter}{number of gibbs sampler interations}
-
 \item{dat}{prepared data frame (for development, please dont use).}
+
+\item{niter}{number of gibbs sampler interations}
 
 \item{prior_k}{prior jump probabilities. Either a vector (will be normalised) or a single value for the probability of jump somewhere.}
 

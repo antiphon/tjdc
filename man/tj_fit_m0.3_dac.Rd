@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_m0.5.R
 \name{tj_fit_m0.3_dac}
 \alias{tj_fit_m0.3_dac}
-\title{Wrapper to fit model 3 to a mosaic}
+\title{Wrapper to fit model 3 to a mosaic, old version}
 \usage{
 tj_fit_m0.3_dac(
   x,

@@ -1,4 +1,4 @@
-# Test m0.3 fitter
+# Test m0.6 fitter
 
 library(devtools)
 load_all()
@@ -17,18 +17,22 @@ datx <- d |> filter(hasjump & cell %in% c(326:363))
 
 
 
-da <- tj_fit_m0.3(x, timevar = "z",
-                 attrvar = "values",
-                 gamma = 0.0,
-                 prior_k = 0.9,
-                 verbose = TRUE,
-                 niter = 100,
-                 keep_hist = TRUE,
-                 prior_theta = list(m = c(0, 0, 0),
-                                     S = diag( c(1e4, 1e4, 1e2) )),
-                 truncate_jump_at_mean = -1
-#                 dat = datx
-                 )
+da <- tj_fit_m0.6(x, timevar = "z",
+                  attrvar = "values",
+                  gamma = 0.2,
+                  prior_k = 0.9,
+                  verbose = TRUE,
+                  niter = 1000,
+                  keep_hist = TRUE,
+                  prior_delta = list(m = 0,
+                                     s2 = 10, a = -Inf, b = 0)
+)
+# or
+da <- tj_fit_m0.6s(x, timevar="z",
+                   cfg = tj_cfg_m0.6(gamma = 0.2, prior_k = 0.9, niter = 1000, keep_hist = TRUE, verbose=TRUE))
+
+
+
 
 a <- da
 ## Trace
@@ -52,10 +56,10 @@ ds <- s |> left_join(d) |> filter(cell %in% exc)
 pred <- tj_predict_m0.3(s = s, cells = exc)
 
 print( ds |> ggplot() +
-  geom_line(aes(time, value, group= cell, alpha = pred_jump_prob)) +
-  geom_line(data = pred, aes(time, value), col = 2) +
-    scale_alpha_continuous(limits = 0:1) +
-  facet_wrap(~cell) + theme_bw() )
+         geom_line(aes(time, value, group= cell, alpha = pred_jump_prob)) +
+         geom_line(data = pred, aes(time, value), col = 2) +
+         scale_alpha_continuous(limits = 0:1) +
+         facet_wrap(~cell) + theme_bw() )
 
 
 

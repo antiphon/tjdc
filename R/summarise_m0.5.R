@@ -5,7 +5,7 @@
 #'
 #' @import stars dplyr
 #' @export
-summarise_m0.5 <- function(x, ..., cells) {
+tj_summarise_m0.5 <- function(x, ..., cells) {
 
   if(missing(cells)) cells <- x$cells # do alla
 
@@ -38,7 +38,29 @@ summarise_m0.5 <- function(x, ..., cells) {
 #'
 #' @export
 
-trace_m0.5 <- function(x, cell, add_sub_info = FALSE) {
+tj_trace_m0.5 <- function(x, cell, add_sub_info = FALSE) {
+  # find it and get it:
+  them <-  which ( sapply(x, \(f) cell %in% f$cell_mapping$oldcell ) )
+
+  tr <- lapply(them, \(si) {
+    fi <- x[[si]]
+    ncell <- fi$cell_mapping$cell[ match( cell, fi$cell_mapping$oldcell ) ]
+    tc <- trace_m0.3(x[[si]], ncell)
+    if(add_sub_info) tc <- tc |> mutate(subset=si, subset_cell = ncell, cell = cell)
+    tc
+  })
+  if(length(them) == 1) tr[[them]] else tr
+}
+
+
+#' Retrieve trace for particular cell from list of mosaic fits
+#'
+#' @param x list of fits from the tj_fit_m0.3_dac
+#' @param cell which cell, in the original raster
+#'
+#' @export
+
+tj_trace_m0.3_dac <- function(x, cell, add_sub_info = FALSE) {
   # find it and get it:
   them <-  which ( sapply(x, \(f) cell %in% f$cell_mapping$oldcell ) )
 

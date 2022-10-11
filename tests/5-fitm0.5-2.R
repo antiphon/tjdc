@@ -28,7 +28,7 @@ af <- tj_fit_m0.3_dac(r,
 # Summarise
 
 f <- af[[1]]
-s <- summarise_m0.3(f)
+s <- tj_summarise_m0.3(f)
 
 library(ggplot2)
 library(sf)
