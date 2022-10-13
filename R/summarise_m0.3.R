@@ -61,7 +61,7 @@ tj_summarise_m0.3 <- function(x, ..., cells, burnin, thin_steps) {
 #' @export
 tj_predict_m0.3 <- function(x, cells, ..., s) {
   #
-  if(missing(s)) s <- summarise_m0.3(x, cells = cells, ...)
+  if(missing(s)) s <- tj_summarise_m0.3(x, cells = cells, ...)
   # Modes
   if(missing(cells)) cells <- s$cell # do all
   if(!all(cells %in% s$cell)) stop("cells and summary do not match properly.")
@@ -101,7 +101,7 @@ tj_predict_m0.3 <- function(x, cells, ..., s) {
 
 tj_trace_m0.3 <- function(x, cell, ...) {
   h <- x$keep_hist
-  if(is.null(x$hist_k)) stop("Model not estimated with keep_hist = TRUE")
+  if(is.null(x$hist_k)) stop("Model not estimated with keep_hist = TRUE or c(...,cell,...)")
   th <- x$hist_theta[,cell,] |>
     as_tibble() |>
     setNames(c("a", "b","d"))

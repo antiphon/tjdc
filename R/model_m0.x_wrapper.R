@@ -45,20 +45,6 @@ tj_fit_m0.x <- function(x,
 
   if(missing(cfg)) cfg <- get(sprintf("tj_cfg_%s", model_variant))(...)
 
-  tj_fit_fun <- get(sprintf("tj_fit_%ss", model_variant))
-
-  ### Main call function for each tile.
-  fit_one <- function(i) {
-    # subdivide by row-column
-    rc <- tiling$rc[i, ] |> unlist()
-    ri <- x[, rc['cmin']:rc['cmax'], rc['rmin']:rc['rmax']]
-    # go
-    res <- tj_fit_fun( x= ri, timevar = timevar, attrvar = attrvar, cfg = cfg)
-    # add cell mapping
-    res$cell_info |> mutate(truecell = tiling$cell[[i]])
-    res
-  }
-
   # prepapre wrapping
   ntiles       <- prod(tiling$n)
   tiles_needed <- 1:ntiles
@@ -75,15 +61,23 @@ tj_fit_m0.x <- function(x,
     }
   }
 
+  # Prepare task for workers
+  tj_fit_fun <- get(sprintf("tj_fit_%ss", model_variant))
+  ### Main call function for each tile.
+  fit_one <- function(i) {
+    # subdivide by row-column
+    rc <- tiling$rc[i, ] |> unlist()
+    ri <- x[, rc['cmin']:rc['cmax'], rc['rmin']:rc['rmax']]
+    # go
+    res <- tj_fit_fun( x= ri, timevar = timevar, attrvar = attrvar, cfg = cfg)
+    # add cell mapping
+    res$cell_info <- res$cell_info |> mutate(truecell = tiling$cell[[i]])
+    res
+  }
   ## Start cluster
   if(ncores>1) doParallel::registerDoParallel(ncores)
   # Cluster needs
-  exports <- c(
-    "x",
-    "cfg",
-    "tiling",
-    "tj_fit_fun",
-    "mutate")
+  exports <- c() # autoexport takes care of all
 
 
   ## Loop over
@@ -91,7 +85,6 @@ tj_fit_m0.x <- function(x,
 
   ## Start clock
   timer0 <- looptimer( n = length(blocks) ,
-                       fg = 2,
                        endline = "     \r",
                        prefix = sprintf("[m0.x %ic]", ncores))
   r5 <- list() # results
@@ -100,12 +93,15 @@ tj_fit_m0.x <- function(x,
 
     ### fit them
     if(ncores>1) {
-      rx <- foreach(x = bl, .export = exports) %dopar% fit_one(x)
-    } else rx <- lapply(bl, fit_one)
-    # keep
+      rx <- foreach(i = bl,
+                    .export = exports,
+                    .packages = c("stars", "tjdc") ) %dopar% fit_one(i)
+    }
+    else # serial
+      rx <- lapply(bl, fit_one)
+    #
     r5[bl] <- rx
-
-
+    #
     ## Store fits? Drop afterwards?
     if(!is.null(fitpath)) {
       for(bli in bl) {
@@ -120,17 +116,109 @@ tj_fit_m0.x <- function(x,
   }#####
 
   # Clear up
-  if(ncores>1)doParallel::stopImplicitCluster()
-  if(verbose) message(summary(timer0))
-
+  if(ncores>1) doParallel::stopImplicitCluster()
+  if(verbose)  message(summary(timer0))
+  # exit?
   if(!keep_all_in_memory) return(fit_file_names)
   # if we actually want to keep all in memory, load missing
   if(!is.null(fitpath)) {
     for(bli in which(!fit_not_found) ) r5[[bli]] <- readRDS(fit_file_names[bli])
     message(sprintf("[keep_all_in_memory=TRUE] Restored %i fits.", sum(!fit_not_found)))
   }
-  # done and done.
+  # done, return list of fits.
   return(r5)
+}
+
+
+
+
+###############################################
+#' Stitch a mosaic model fit
+#'
+#' Average overlapping regions' pixel estimates. Old format.
+#'
+#'
+#' @export
+
+tj_stitcher_m0.x <- function(list_of_fits, tiling) {
+  # figure out which have repeats
+  subsets <- tiling$cell
+  mess   <- unlist(subsets)
+  ncells <- max(mess)
+  x      <- tabulate(mess, ncells)
+  est_cells  <- which(x > 0) # which cells do we actually have in subsets
+  are_repeated_txt      <- which(x > 1) |> as.character()
+  are_repeated          <- are_repeated_txt  |> as.integer()
+  are_repeated_idx      <- match( are_repeated, est_cells )
+  not_repeated_sets     <- lapply(subsets, setdiff, are_repeated)
+  not_repeated_sets_idx <- lapply(not_repeated_sets, match, est_cells)
+  #
+  # Do global variables separate, here the pixelwises
+  vars <- c("k", "z", "theta_m")
+  posts <- list()
+  #browser()
+  for(var in vars) {
+    # Go first for the non-repeated
+    V1 <- lapply(seq_along(subsets), \(si) {
+      ss_idx          <- match( not_repeated_sets[[si]], subsets[[si]]  )
+      o               <- rbind(list_of_fits[[si]][[var]])[,ss_idx]
+      attr(o, "cidx") <- not_repeated_sets[[si]]
+      o
+    })
+    # then for the repeated:
+    Vx <- lapply(seq_along(subsets), \(si) {
+      idx    <- which(are_repeated %in% subsets[[si]])
+      ss_idx <- match(are_repeated[idx], subsets[[si]]  )
+      o      <- rbind(list_of_fits[[si]][[var]])[,ss_idx, drop=FALSE]
+      attr(o, "cidx") <- are_repeated[idx]
+      o
+    })
+    # gather
+    V <- matrix(NA, nrow = nrow( rbind( list_of_fits[[1]][[var]] ) ), ncol = ncells)
+    for(si in seq_along(subsets)) {
+      V[, attr( V1[[si]], "cidx" )] <- V1[[si]]
+      # And then: pointwise means
+      if(length(are_repeated)) { ###
+        r_c <- attr( Vx[[si]], "cidx" )
+        p1  <- V[, r_c] # old
+        p2  <- Vx[[si]]
+        # for averaging
+        nc <- x[r_c]
+        p2 <- t( t(p2)/nc )
+        #
+        p12 <- list(p1, p2) |> simplify2array()
+        ndi <- length(dim(p12))
+
+        # Average, but only those that are not completely NA
+        m_m <- apply(p12, 1:(ndi-1), \(v) if(all(is.na(v))) NA else sum(v, na.rm=TRUE))
+        # store
+        V[, attr( Vx[[si]], "cidx" )] <- m_m
+      }
+    }
+    # and mean
+
+    posts[[var]] <- V
+  }
+  # Gather cell information, remapping to original cell indices.
+  cinfo <- lapply(seq_along(list_of_fits), \(i) {
+    f <- list_of_fits[[i]]
+    f$cell_info |> mutate(subset_cell = cell,
+                          cell = truecell,
+                          subset = i)
+  }) |>
+    bind_rows()
+  #
+  posts$sigma2 <- sapply(list_of_fits, getElement, "sigma2") |> t() |> colMeans()
+  posts$took   <- mean(lapply(list_of_fits, getElement, "took") |>
+                         sapply(as.numeric, units = "secs")) |> as.difftime(units = "secs") # arbitrary
+  posts$hist_sigma2 <- sapply(list_of_fits, getElement, "hist_sigma2")
+  posts$cells  <- est_cells
+  posts$cells_in_many <- are_repeated
+  posts$cell_info <- cinfo
+  posts$timesteps <- list_of_fits[[1]]$timesteps
+  posts$keep_hist <- FALSE # deal with somehow?
+  posts$tiling <- tiling
+  posts
 }
 
 
