@@ -4,7 +4,7 @@ library(devtools)
 load_all()
 
 o <- load("data/testcubes_jump.rda") |> get()
-x0 <- o$noise
+x0 <- o$artrend
 x  <- x0
 # as dataframe
 jumpd <- tj_stars_to_data(o$jump, timevar = "z") |> filter(time == 11)
@@ -17,7 +17,7 @@ datx <- d |> filter(hasjump & cell %in% c(326:363))
 
 
 
-da <- tj_fit_m0.6(x, timevar = "z",
+da <- tj_fit_m0.x(x, timevar = "z",
                   attrvar = "values",
                   gamma = 0.2,
                   prior_k = 0.9,

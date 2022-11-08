@@ -51,7 +51,7 @@ tj_fit_m0.x <- function(x,
   # File management:
   if(!is.null(fitpath)) {
     # filename template for this run
-    froot          <- sprintf("%s/tjdc_%s_%s_%%04i.rds", model_variant, fitpath, fitid)
+    froot          <- sprintf("%s/tjdc_%s_%s_%%04i.rds", fitpath, model_variant, fitid)
     fit_file_names <- sprintf(froot, tiles_needed)
     fit_not_found  <- !file.exists(fit_file_names)
     if( any(!fit_not_found) & !recalc ) {
