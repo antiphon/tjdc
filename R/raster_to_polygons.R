@@ -5,6 +5,7 @@
 #' @return sf-object of polygons
 #'
 #' @import stars sf dplyr
+#' @export
 
 tj_stars_to_polygon_union <- function( r, which = 1) {
   if(length(names(r)) > 1 | dim(r)[3] > 1) stop("r should have only one layer and 2 dimensions.")
