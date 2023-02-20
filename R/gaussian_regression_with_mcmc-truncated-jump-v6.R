@@ -10,6 +10,8 @@
 #' @param prior_theta prior (m=vec, S=matrx) for intercept and trend parameter, same for all cells
 #' @param prior_delta prior(m=num, s2=num>0, a=num, b=num>a) truncated normal prior for eac jump, trucate to [a,b]
 #' @param keep_hist If TRUE, keep the mcmc trajectories of all variables. If vector of cell indices, keep history for only those (to save space). Give at least 2 cell-indices or logical, otherwise unexpected behaviour. (default: FALSE).
+#' @param neighbourhood_type How is neighbourhood defined (default: "square")
+#' @param neighbourhood_range How large neighbourhood (default: 1)
 #' @param ... ignored
 #'
 #' @details We assume the datacube holds for each pixel (x-y) a series of values (`attrvar`) in time (`timevar`).
@@ -39,6 +41,8 @@ tj_fit_m0.6 <- function(x,
                         keep_hist = TRUE,
                         cells_to_ignore = NULL,
                         ignore_cells_with_na  =  TRUE,
+                        neighbourhood_type = "square",
+                        neighbourhood_range = 1,
                         ... # ignored
 ) {
 
@@ -64,8 +68,19 @@ tj_fit_m0.6 <- function(x,
   if(length(keep_hist) > 1) if(!all(keep_hist %in% cells)) stop("Input error: keep_hist")
   #
   n <- nr * nc # the complete raster
-  nlist <-  if(gamma != 0)  lapply(1:n, tj_cell_neighbours, nr = nr, nc = nc) else vector("list", n)
+  nlist <-  if(gamma != 0)  lapply(1:n, tj_cell_neighbours,
+                                   nr = nr, nc = nc,
+                                   type = neighbourhood_type,
+                                   range = neighbourhood_range) else vector("list", n)
 
+  # We might have weights.
+  neighbours_have_weights <- FALSE
+  if(!is.null(attr(nlist[[1]], "weight"))){
+    nlist_weights <- lapply(nlist, attr, "weight")
+    neighbours_have_weights <- TRUE
+  }
+
+  #browser()
 
   # Keep this info
   timesteps <- sort( unique(dat$time) )
@@ -86,7 +101,14 @@ tj_fit_m0.6 <- function(x,
   # These cells will be in play.
   cells_to_consider <- setdiff(cells, cells_to_ignore)
   # remove the unwanted from neighbourhoods
-  if(!is.null(cells_to_ignore)) nlist <- lapply(nlist, setdiff, cells_to_ignore)
+  if(!is.null(cells_to_ignore)) {
+    #
+    #nlist <- lapply(nlist, setdiff, cells_to_ignore)
+    nlist_keep <- lapply(nlist, \(n) !(n%in% cells_to_ignore))
+    nlist <- lapply(seq_along(nlist), \(i) nlist[[i]][nlist_keep[[i]]] )
+    if(neighbours_have_weights)
+      nlist_weights <- lapply(seq_along(nlist_weights), \(i) nlist_weights[[i]][nlist_keep[[i]]] )
+  }
   #
   # Keep only relevant, and arrange by cell and then time.
   dat <- dat |>
@@ -104,7 +126,6 @@ tj_fit_m0.6 <- function(x,
   # This is very crusial step here! Make sure dat is in the right order.
   Y[, cells_to_consider] <- dat$value
   N <- nrow(dat)
-  #browser()
   ##########################################
   # priors
   if(length(prior_k) == 1) prior_k <- c( rep(1, K-1), (K-1) * (1-prior_k)/prior_k )
@@ -179,8 +200,10 @@ tj_fit_m0.6 <- function(x,
       ss_after <- sum(eid2[-1]) - cumsum(c(0, eid2[-c(1,K)]) )
       SS     <- c(ss_upto + ss_after, sum(ei2)) # and without jump
       # Then the Potts smoothing
-      if(nnsizes[[i]]>0)
-        pott <- rowSums(G[, kvec[ nlist[[i]] ], drop=FALSE  ]) # n.of kth type neighbours times weight.
+      if(nnsizes[[i]]>0){
+        pott <- if(neighbours_have_weights) rowSums(nlist_weights[[i]] * G[, kvec[ nlist[[i]] ], drop=FALSE  ])
+                else rowSums(G[, kvec[ nlist[[i]] ], drop=FALSE  ]) # n.of kth type neighbours times weight.
+      }
       else pott <- 0
       # Then the probability to be softmaxed
       lp   <- -1/(2*sigma2) * SS  + pott + log( prior_k )
@@ -282,7 +305,9 @@ tj_fit_m0.6 <- function(x,
               timesteps = timesteps,
               ctrl = ctrl,
               gdims = gdims,
-              cells_ignored = cells_to_ignore)
+              cells_ignored = cells_to_ignore,
+              neighbourhood = list(type = neighbourhood_type,
+                                   range = neighbourhood_range))
 
   class(out) <- c(is(out), "tj_fit_mc")
   out
@@ -317,7 +342,9 @@ tj_cfg_m0.6 <- function(...) {
     ctrl = list(burnin = 0.5, thin_steps = 1),
     keep_hist = TRUE,
     cells_to_ignore = NULL,
-    ignore_cells_with_na  =  TRUE
+    ignore_cells_with_na  =  TRUE,
+    neighbourhood_type = "square",
+    neighbourhood_range = 1
   )
   #browser()
   new <- list(...)
