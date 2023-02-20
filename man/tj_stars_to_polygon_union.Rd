@@ -5,10 +5,13 @@
 \title{Raster to Polygons
 Take stars-raster and create a polygons of those pixels with >0 values using st_union}
 \usage{
-tj_stars_to_polygon_union(r)
+tj_stars_to_polygon_union(r, which = 1)
 }
 \arguments{
 \item{r}{stars object}
+}
+\value{
+sf-object of polygons
 }
 \description{
 Raster to Polygons

@@ -8,7 +8,7 @@
 #' @export
 
 tj_stars_to_polygon_union <- function( r, which = 1) {
-  if(length(names(r)) > 1 | dim(r)[3] > 1) stop("r should have only one layer and 2 dimensions.")
+  if(length(names(r)) > 1 || length(dim(r)) > 2) stop("r should have only one layer and 2 dimensions.")
   p <- st_as_sf(r > 0)
   names(p)[1] <- "val"
   pt <- p |> filter( val == TRUE)
