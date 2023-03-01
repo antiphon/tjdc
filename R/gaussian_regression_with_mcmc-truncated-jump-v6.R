@@ -7,11 +7,13 @@
 #' @param niter number of gibbs sampler interations
 #' @param prior_k prior jump probabilities. Either a vector (will be normalised) or a single value for the probability of jump somewhere.
 #' @param dat prepared data frame (for development, please dont use).
+#' @param gamma interaction parameter. Multiplies the kernel-values in the neighbourhood. 0 means no spatial correlation.
 #' @param prior_theta prior (m=vec, S=matrx) for intercept and trend parameter, same for all cells
 #' @param prior_delta prior(m=num, s2=num>0, a=num, b=num>a) truncated normal prior for eac jump, trucate to [a,b]
 #' @param keep_hist If TRUE, keep the mcmc trajectories of all variables. If vector of cell indices, keep history for only those (to save space). Give at least 2 cell-indices or logical, otherwise unexpected behaviour. (default: FALSE).
 #' @param neighbourhood_type How is neighbourhood defined (default: "square")
 #' @param neighbourhood_range How large neighbourhood (default: 1)
+#' @param neighbourhood_scale_to_8 Logical: Scale the sum of weights over full neighbhourhood to 8?
 #' @param ... ignored
 #'
 #' @details We assume the datacube holds for each pixel (x-y) a series of values (`attrvar`) in time (`timevar`).
@@ -20,12 +22,14 @@
 #' a jump of size delta after one of the time points 1...T-1. The special estimate "jump after T"
 #' means no jump is predicted.
 #'
+#' Explanation for `neighbourhood_scale_to_8`: For comparison reasons, the original neighobuhrood was the nearest-8 adjacent pixels.
+#' Setting the parameter TRUE will scale sum over any neighbourhood to be 8, to make kernel choice and gamma more independent.
 #'
 #' @import looptimer dplyr
 #' @export
 
 
-tj_fit_m0.6 <- function(x,
+tj_fit_m0.6_v1 <- function(x,
                         dat = NULL, # make sure you know what you are doing here!
                         timevar = "z",
                         attrvar = "values",
@@ -43,6 +47,7 @@ tj_fit_m0.6 <- function(x,
                         ignore_cells_with_na  =  TRUE,
                         neighbourhood_type = "square",
                         neighbourhood_range = 1,
+                        neighbourhood_scale_to_8 = TRUE,
                         ... # ignored
 ) {
 
@@ -71,7 +76,8 @@ tj_fit_m0.6 <- function(x,
   nlist <-  if(gamma != 0)  lapply(1:n, tj_cell_neighbours,
                                    nr = nr, nc = nc,
                                    type = neighbourhood_type,
-                                   range = neighbourhood_range) else vector("list", n)
+                                   range = neighbourhood_range,
+                                   scale_to_8 = neighbourhood_scale_to_8) else vector("list", n)
 
   # We might have weights.
   neighbours_have_weights <- FALSE
@@ -87,7 +93,6 @@ tj_fit_m0.6 <- function(x,
   cell_info <- dat[dat$time == timesteps[1], c("cell", "c_x", "c_y")]
 
 
-  ####################################################################################
   # Check for missing values and ignore them?
   if(ignore_cells_with_na) {
     # check which have na and flag them
@@ -104,7 +109,7 @@ tj_fit_m0.6 <- function(x,
   if(!is.null(cells_to_ignore)) {
     #
     #nlist <- lapply(nlist, setdiff, cells_to_ignore)
-    nlist_keep <- lapply(nlist, \(n) !(n%in% cells_to_ignore))
+    nlist_keep <- lapply(nlist, \(n) !(n %in% cells_to_ignore))
     nlist <- lapply(seq_along(nlist), \(i) nlist[[i]][nlist_keep[[i]]] )
     if(neighbours_have_weights)
       nlist_weights <- lapply(seq_along(nlist_weights), \(i) nlist_weights[[i]][nlist_keep[[i]]] )
@@ -114,7 +119,7 @@ tj_fit_m0.6 <- function(x,
   dat <- dat |>
     filter(cell %in% cells_to_consider) |>
     arrange(cell, time)
-  ####################################################################################
+
   # Check for hermits. These will need to be known to avoid subsetting G with numeric(0)
   nnsizes <- sapply(nlist, length)
   #
@@ -126,13 +131,13 @@ tj_fit_m0.6 <- function(x,
   # This is very crusial step here! Make sure dat is in the right order.
   Y[, cells_to_consider] <- dat$value
   N <- nrow(dat)
-  ##########################################
+
   # priors
   if(length(prior_k) == 1) prior_k <- c( rep(1, K-1), (K-1) * (1-prior_k)/prior_k )
   prior_k <- rep(prior_k, K)[1:K]
   prior_k <- prior_k / sum(prior_k)
 
-  ##########################################
+
   # Precompute for linear stuff
   X <- cbind(1, timesteps)
   X1_list    <- lapply(1:K, \(k) cbind(X, rep(0:1, c(k,K-k))) )
@@ -190,7 +195,7 @@ tj_fit_m0.6 <- function(x,
     for(i in sample(cells_to_consider) ) {
       #
       yi   <- Y[,i]
-      ei   <- c(yi - X %*% theta[i, -3]) # assuming 3d
+      ei   <- c(yi - X %*% theta[i, -3]) # assuming 3d parameter theta
       ei2  <- ei^2
       eid  <- ei - theta[i, 3]
       eid2 <- eid^2
@@ -200,9 +205,11 @@ tj_fit_m0.6 <- function(x,
       ss_after <- sum(eid2[-1]) - cumsum(c(0, eid2[-c(1,K)]) )
       SS     <- c(ss_upto + ss_after, sum(ei2)) # and without jump
       # Then the Potts smoothing
-      if(nnsizes[[i]]>0){
-        pott <- if(neighbours_have_weights) rowSums(nlist_weights[[i]] * G[, kvec[ nlist[[i]] ], drop=FALSE  ])
-                else rowSums(G[, kvec[ nlist[[i]] ], drop=FALSE  ]) # n.of kth type neighbours times weight.
+      if(nnsizes[[i]]>0){ # we are using neighbours and have some
+        pott <- if(neighbours_have_weights)
+                  rowSums(nlist_weights[[i]] * G[, kvec[ nlist[[i]] ], drop=FALSE  ])
+                else
+                  rowSums(G[, kvec[ nlist[[i]] ], drop=FALSE  ])
       }
       else pott <- 0
       # Then the probability to be softmaxed
@@ -252,14 +259,15 @@ tj_fit_m0.6 <- function(x,
     chol_theta_Snew <- chol(theta_Snew)
 
     #
-    #if(verbose && (it %% B == 0)) cat2(sprintf("m0.6mc: %3.0f%%   \r", 100*it/niter))
     if(verbose) print( timer1 <- looptimer(timer1) )
     history_k[it,]         <- kvec
     history_theta[it,,]    <- theta
     history_sigma2[it,]    <- sigma2
   }
+
+  # Chain done.
   cat2("\n")
-  #browser()
+
   #
   # Compute best estimates
   o                    <- seq(ctrl$burnin * niter , niter, by = ctrl$thin_steps )
@@ -314,7 +322,7 @@ tj_fit_m0.6 <- function(x,
 }
 
 
-######################################################################################
+
 #' Fit m0.6 alternative parametrisation
 #'
 #' Wrapper for m0.6 to be called with data and a single list-item of run-parameters

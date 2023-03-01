@@ -31,7 +31,7 @@ if(0) {
 
 # check type and range
 
-if(1) {
+if(0) {
   iv <- c(10 * nc + c(5, 15, 30))
   n  <- list()
   for(i in seq_along(iv))
@@ -45,6 +45,26 @@ if(1) {
   points(xy[iv,,drop=FALSE], col = 3, pch = 19)
   points( tj_i2rc(n2, nr, nc)[,2:1], col = 2, pch = 15, cex = w*1.5)
 }
+
+### Check normalisation to 8
+if(1) {
+  iv <- c(10 * nc + c(5, 15, 30))
+  n  <- list()
+  for(i in seq_along(iv))
+    n[[i]] <- tj_cell_neighbours(iv[i], nr, nc, range = r <- 1 * i, type = t <- "sqexp", scale_to_8 = TRUE )
+  n2 <- c(unlist(n))
+  wl <- lapply(n, \(v) attr(v, "weight"))
+  sapply(wl, sum)
+  w  <- unlist( wl )
+  if(is.null(w)) w <- 1
+
+  par(bg = "black")
+  plot(xy[-n2,], asp = 1, pch = 19, col = "gray50")
+  points(xy[iv,,drop=FALSE], col = 3, pch = 19)
+  points( tj_i2rc(n2, nr, nc)[,2:1], col = 2, pch = 15, cex = w*1.5)
+}
+
+
 
 
 

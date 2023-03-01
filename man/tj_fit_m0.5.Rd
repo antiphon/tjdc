@@ -36,12 +36,14 @@ List of fits (keep_all_in_memory=TRUE) or list of files where the fits are store
 Note: The fits have cell_info element where the 'truecell' column provides the mapping to the original 'x'.
 }
 \description{
-Split datacube into sub-rasters, fit model 0.3's, and stitch together. Divide-and-conquer.
+(OBSOLETE) Split datacube into sub-rasters, fit model 0.3's, and stitch together. Divide-and-conquer.
 }
 \details{
 Wrap fitting of m0.3 in subsets for multicore computation. The tiling splits the stars-object
 into subrasters, then [tj_fit_m0.3()] is called on each subraster.
+
+This has been replaced by the more general tj_fit_m0.x.
 }
 \seealso{
-[tj_cfg_m0.3()]
+[tj_cfg_m0.3()] [tj_fit_m0.x]
 }

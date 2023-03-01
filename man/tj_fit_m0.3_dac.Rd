@@ -44,4 +44,6 @@ Split datacube into sub-rasters, fit model 0.3's, and stitch together. Divide-an
 }
 \details{
 Wrap fitting of m0.3 in subsets for multicore computation.
+
+Obsolete. Use tj_fit_m0.x.
 }

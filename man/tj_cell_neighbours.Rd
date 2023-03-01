@@ -4,7 +4,15 @@
 \alias{tj_cell_neighbours}
 \title{Raster Cell Neighbourhoods}
 \usage{
-tj_cell_neighbours(i, nr, nc, ...)
+tj_cell_neighbours(
+  i,
+  nr,
+  nc,
+  ...,
+  type = "square",
+  range = 1,
+  scale_to_8 = FALSE
+)
 }
 \arguments{
 \item{i}{focal cell}
@@ -14,12 +22,28 @@ tj_cell_neighbours(i, nr, nc, ...)
 \item{nc}{number of columns in the xy-grid}
 
 \item{...}{ignored}
+
+\item{type}{"square" (default), "circle", "sqexp"}
+
+\item{range}{Range of neighbourhood, default is 1 for 1-step-neighbourhoods}
+
+\item{scale_to_8}{normalise the kernel to 8?}
+}
+\value{
+A vector of indices. If `type='sqexp'`, will return the weights in the attribute 'weight'.
 }
 \description{
 Raster Cell Neighbourhoods
 }
 \details{
-Non-toroidal, 8 nearest aka queen neighbours.
+The default is `type='square'` and `range=1`, which is 8 adjacent pixels. Increasing `range=2` includes the neighbours' neighbours (24 pixels).
+
+To return neighbourhood with corners removed, use `type='circle'` which drops the pixels from square-neighbourhood with distance larger than `range`.
+
+To weight the further away neighbours, use `type='sqexp'`. It is similar to circle, but with weight decreasing exponentially in squared distance,
+scaled to be 1 for distance 1.
+
+Non-toroidal neighborhood, so at edges there will be less neighbours.
 
 Will assume cell-numbering
 cell = col + (row-1) * ncol.

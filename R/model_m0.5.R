@@ -1,6 +1,6 @@
 #' Wrapper to fit model 3 to a mosaic
 #'
-#' Split datacube into sub-rasters, fit model 0.3's, and stitch together. Divide-and-conquer.
+#' (OBSOLETE) Split datacube into sub-rasters, fit model 0.3's, and stitch together. Divide-and-conquer.
 #'
 #' @param x stars datacube
 #' @param tiling given by [tj_divide_raster()]
@@ -13,13 +13,16 @@
 #' Wrap fitting of m0.3 in subsets for multicore computation. The tiling splits the stars-object
 #' into subrasters, then [tj_fit_m0.3()] is called on each subraster.
 #'
+#' This has been replaced by the more general tj_fit_m0.x.
+#'
 #' @return List of fits (keep_all_in_memory=TRUE) or list of files where the fits are stored (fitpath provided).
 #' Note: The fits have cell_info element where the 'truecell' column provides the mapping to the original 'x'.
 #'
-#' @seealso [tj_cfg_m0.3()]
+#'
+#'
+#' @seealso [tj_cfg_m0.3()] [tj_fit_m0.x]
 #'
 #' @import looptimer doParallel foreach stars dplyr
-#' @export
 tj_fit_m0.5 <- function(x,
                         timevar     = "year",
                         attrvar     = "values",
@@ -142,9 +145,10 @@ tj_fit_m0.5 <- function(x,
 #' @details
 #' Wrap fitting of m0.3 in subsets for multicore computation.
 #'
+#' Obsolete. Use tj_fit_m0.x.
+#'
 #'
 #' @import looptimer doParallel foreach
-#' @export
 
 tj_fit_m0.3_dac <- function(x,
                             timevar = "z",

@@ -6,6 +6,7 @@
 #' @param ... ignored
 #' @param type "square" (default), "circle", "sqexp"
 #' @param range Range of neighbourhood, default is 1 for 1-step-neighbourhoods
+#' @param scale_to_8 normalise the kernel to 8?
 #'
 #' @details
 #' The default is `type='square'` and `range=1`, which is 8 adjacent pixels. Increasing `range=2` includes the neighbours' neighbours (24 pixels).
@@ -23,7 +24,7 @@
 #' A vector of indices. If `type='sqexp'`, will return the weights in the attribute 'weight'.
 #'
 #' @export
-tj_cell_neighbours <- function(i, nr, nc, ..., type = "square", range = 1) {
+tj_cell_neighbours <- function(i, nr, nc, ..., type = "square", range = 1, scale_to_8 = FALSE) {
   #
   # the radius in pixels
   sqexp <- (type == "sqexp")
@@ -45,6 +46,10 @@ tj_cell_neighbours <- function(i, nr, nc, ..., type = "square", range = 1) {
     W  <- exp(-(D2-1)/range^2)
     # clip corners?
   }
+  if(scale_to_8) {
+    if(!sqexp) W <- rep(1, nrow(rcn))
+    W <- W / sum(W) * 8
+  }
   #  browser()
   # focal rc
   rc <- tj_i2rc(i, nr, nc)
@@ -55,7 +60,7 @@ tj_cell_neighbours <- function(i, nr, nc, ..., type = "square", range = 1) {
     # crop to domain
     good <- (rcj[,1] > 0) & (rcj[,1] <= nr) & (rcj[,2]>0) & (rcj[,2] <= nc)
     out <- tj_rc2i(rcj[good,], nr, nc)
-    if(sqexp) attr(out, "weight") <- W[good]
+    if(sqexp | scale_to_8) attr(out, "weight") <- W[good]
     out
   })
   if(length(o) == 1) o[[1]]

@@ -48,6 +48,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sample_fast_c
+int sample_fast_c(NumericVector prob);
+RcppExport SEXP _tjdc_sample_fast_c(SEXP probSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type prob(probSEXP);
+    rcpp_result_gen = Rcpp::wrap(sample_fast_c(prob));
+    return rcpp_result_gen;
+END_RCPP
+}
 // c_mann_kendall_test
 List c_mann_kendall_test(NumericVector x);
 RcppExport SEXP _tjdc_c_mann_kendall_test(SEXP xSEXP) {
@@ -180,6 +191,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_tjdc_mann_kendall_S", (DL_FUNC) &_tjdc_mann_kendall_S, 1},
     {"_tjdc_mann_kendall_S_and_slope", (DL_FUNC) &_tjdc_mann_kendall_S_and_slope, 2},
     {"_tjdc_c_contextual_mann_kendall", (DL_FUNC) &_tjdc_c_contextual_mann_kendall, 5},
+    {"_tjdc_sample_fast_c", (DL_FUNC) &_tjdc_sample_fast_c, 1},
     {"_tjdc_c_mann_kendall_test", (DL_FUNC) &_tjdc_c_mann_kendall_test, 1},
     {"_tjdc_c_mann_kendall_test_and_beta", (DL_FUNC) &_tjdc_c_mann_kendall_test_and_beta, 2},
     {"_tjdc_neighbour_cells_queen_row_col", (DL_FUNC) &_tjdc_neighbour_cells_queen_row_col, 3},

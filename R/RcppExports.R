@@ -13,6 +13,10 @@ c_contextual_mann_kendall <- function(x, nrow, time, neighbourhood = 2L, calc_sl
     .Call('_tjdc_c_contextual_mann_kendall', PACKAGE = 'tjdc', x, nrow, time, neighbourhood, calc_slope)
 }
 
+sample_fast_c <- function(prob) {
+    .Call('_tjdc_sample_fast_c', PACKAGE = 'tjdc', prob)
+}
+
 c_mann_kendall_test <- function(x) {
     .Call('_tjdc_c_mann_kendall_test', PACKAGE = 'tjdc', x)
 }

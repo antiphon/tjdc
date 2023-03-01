@@ -1,14 +1,19 @@
 #' Simultaneous linear regression with correlated changepoint estimation
 #'
-#' For each pixel in a spatiotemporal raster x time datacube, estimate a linear regression model
+#' For each pixel in a spatiotemporal raster x time datacube,estimate a linear regression model
 #' with 0/1 jumps such that the jump event is correlated within neighbouring pixels.
 #'
 #' @param x input stars object
 #' @param niter number of gibbs sampler interations
 #' @param prior_k prior jump probabilities. Either a vector (will be normalised) or a single value for the probability of jump somewhere.
 #' @param dat prepared data frame (for development, please dont use).
+#' @param gamma interaction parameter. Multiplies the kernel-values in the neighbourhood. 0 means no spatial correlation.
+#' @param prior_theta prior (m=vec, S=matrx) for intercept and trend parameter, same for all cells
+#' @param prior_delta prior(m=num, s2=num>0, a=num, b=num>a) truncated normal prior for eac jump, trucate to [a,b]
 #' @param keep_hist If TRUE, keep the mcmc trajectories of all variables. If vector of cell indices, keep history for only those (to save space). Give at least 2 cell-indices or logical, otherwise unexpected behaviour. (default: FALSE).
-#' @param truncate_jump_at_mean use a truncated normal prior for the jump? Will truncate at prior mean ad-hoc, sign says which side to keep.
+#' @param neighbourhood_type How is neighbourhood defined (default: "square")
+#' @param neighbourhood_range How large neighbourhood (default: 1)
+#' @param neighbourhood_scale_to_8 Logical: Scale the sum of weights over full neighbhourhood to 8?
 #' @param ... ignored
 #'
 #' @details We assume the datacube holds for each pixel (x-y) a series of values (`attrvar`) in time (`timevar`).
@@ -17,19 +22,22 @@
 #' a jump of size delta after one of the time points 1...T-1. The special estimate "jump after T"
 #' means no jump is predicted.
 #'
+#' Explanation for `neighbourhood_scale_to_8`: For comparison reasons, the original neighobuhrood was the nearest-8 adjacent pixels.
+#' Setting the parameter TRUE will scale sum over any neighbourhood to be 8, to make kernel choice and gamma more independent.
 #'
 #' @import looptimer dplyr
 #' @export
 
 
-tj_fit_m0.3 <- function(x,
+tj_fit_m0.6 <- function(x,
                         dat = NULL, # make sure you know what you are doing here!
                         timevar = "z",
                         attrvar = "values",
                         niter = 1000,
                         gamma = 0,
-                        prior_theta  = list(m = c(a=0, b=0, d = 0),
-                                            S = diag(1e5*c(1, 1, 1))),
+                        prior_theta  = list(m = c(a=0, b=0),
+                                            S = diag(1e5*c(1, 1))),
+                        prior_delta = list(m=0, s2 = 1e5, a=-Inf, b=Inf), # truncate delta
                         prior_sigma2 = c(shape = 2, rate = 1), # inv-gamma
                         prior_k = 0.5,
                         verbose = FALSE,
@@ -37,13 +45,15 @@ tj_fit_m0.3 <- function(x,
                         keep_hist = TRUE,
                         cells_to_ignore = NULL,
                         ignore_cells_with_na  =  TRUE,
-                        truncate_jump_at_mean = 0,
+                        neighbourhood_type = "square",
+                        neighbourhood_range = 1,
+                        neighbourhood_scale_to_8 = TRUE,
                         ... # ignored
 ) {
 
   t0 <- Sys.time()
   cat2 <- if(verbose) function(...) message(appendLF=FALSE, ...) else function(...) NULL
-  if(verbose) timer1 <- looptimer(n = niter, endline = "     \r", prefix = "[m0.3 mc]", printevery = ceiling(niter/200)  )
+  if(verbose) timer1 <- looptimer(n = niter, endline = "     \r", prefix = "[m0.6 mc]", printevery = ceiling(niter/200)  )
   #
   # Prepare input:
   # stars to data frame
@@ -63,15 +73,28 @@ tj_fit_m0.3 <- function(x,
   if(length(keep_hist) > 1) if(!all(keep_hist %in% cells)) stop("Input error: keep_hist")
   #
   n <- nr * nc # the complete raster
-  nlist <-  if(gamma != 0)  lapply(1:n, tj_cell_neighbours, nr = nr, nc = nc) else vector("list", n)
+  nlist <-  if(gamma != 0)  lapply(1:n, tj_cell_neighbours,
+                                   nr = nr, nc = nc,
+                                   type = neighbourhood_type,
+                                   range = neighbourhood_range,
+                                   scale_to_8 = neighbourhood_scale_to_8) else vector("list", n)
 
+  # We might have weights.
+  neighbours_have_weights <- TRUE
+  nlist_weights <- lapply(nlist, \(n) rep(1, length(n)))
+  if(!is.null(attr(nlist[[1]], "weight"))){
+    nlist_weights <- lapply(nlist, attr, "weight")
+    neighbours_have_weights <- TRUE
+  }
+
+  #browser()
 
   # Keep this info
   timesteps <- sort( unique(dat$time) )
   cell_info <- dat[dat$time == timesteps[1], c("cell", "c_x", "c_y")]
 
 
-  # - - - - - - -
+  ####################################################################################
   # Check for missing values and ignore them?
   if(ignore_cells_with_na) {
     # check which have na and flag them
@@ -85,7 +108,14 @@ tj_fit_m0.3 <- function(x,
   # These cells will be in play.
   cells_to_consider <- setdiff(cells, cells_to_ignore)
   # remove the unwanted from neighbourhoods
-  if(!is.null(cells_to_ignore)) nlist <- lapply(nlist, setdiff, cells_to_ignore)
+  if(!is.null(cells_to_ignore)) {
+    #
+    #nlist <- lapply(nlist, setdiff, cells_to_ignore)
+    nlist_keep <- lapply(nlist, \(n) !(n%in% cells_to_ignore))
+    nlist <- lapply(seq_along(nlist), \(i) nlist[[i]][nlist_keep[[i]]] )
+    if(neighbours_have_weights)
+      nlist_weights <- lapply(seq_along(nlist_weights), \(i) nlist_weights[[i]][nlist_keep[[i]]] )
+  }
   #
   # Keep only relevant, and arrange by cell and then time.
   dat <- dat |>
@@ -103,44 +133,53 @@ tj_fit_m0.3 <- function(x,
   # This is very crusial step here! Make sure dat is in the right order.
   Y[, cells_to_consider] <- dat$value
   N <- nrow(dat)
-  #browser()
   ##########################################
   # priors
   if(length(prior_k) == 1) prior_k <- c( rep(1, K-1), (K-1) * (1-prior_k)/prior_k )
   prior_k <- rep(prior_k, K)[1:K]
   prior_k <- prior_k / sum(prior_k)
-
+  log_prior_k <- log( prior_k )
   ##########################################
   # Precompute for linear stuff
   X <- cbind(1, timesteps)
-  X1_list <- lapply(1:K, \(k) cbind(X, rep(0:1, c(k,K-k))) )
-  tX1_list <- lapply(X1_list, t)
+  X1_list    <- lapply(1:K, \(k) cbind(X, rep(0:1, c(k,K-k))) )
+  pX         <- ncol(X)+1
+  tX1_list   <- lapply(X1_list, t)
   tX1X1_list <- lapply(X1_list, \(x1) t(x1)%*%x1)
-
+  tX <- t(X)
+  tXX <- tX%*%X
+  #
   # delta, jumpsize, is the last parameter in theta
+  theta_priorS  <- prior_theta$S
   theta_priorSi <- prior_theta$S |> solve()
   theta_priorm  <- prior_theta$m
   theta_priorQm <- theta_priorSi %*% theta_priorm
-
+  #
+  # @todo Externalize this.
+  rtnorm <- function( mu, sigma, a = prior_delta$a, b = prior_delta$b, n = 1) {
+    #truncnorm::rtruncnorm(n = n, a = a, b = b, mean = mu, sd = sigma)
+    qnorm( pnorm( (a-mu)/sigma ) + runif(n) * (pnorm((b-mu)/sigma)-pnorm((a-mu)/sigma)) ) *sigma + mu
+  }
+  theta  <- mvtnorm::rmvnorm(n, prior_theta$m, prior_theta$S)
+  delta  <- rtnorm(mu = prior_delta$m,
+                   sigma = sqrt(prior_delta$s2), n = n)
+  theta  <- cbind(theta, delta)
+  #
   # The interaction matrix
   G <- diag(gamma, K)
-  # initialise chain: Random
-  kvec   <- sample(K, n, replace=TRUE, prob = prior_k + 0.0001 )
-  theta  <- mvtnorm::rmvnorm(n, prior_theta$m, prior_theta$S)
-  if(truncate_jump_at_mean) {
-    o <- which( (truncate_jump_at_mean * theta[,3]) < (truncate_jump_at_mean * theta_priorm[3]) )
-    while( length(o) ){
-      theta[o, 3]  <- mvtnorm::rmvnorm(length(o), prior_theta$m, prior_theta$S)[,3]
-      o <- o[ which( (truncate_jump_at_mean * theta[o,3]) < (truncate_jump_at_mean * theta_priorm[3]) ) ]
-    }
-  }
+  # initialise chain: Random jump times
+  kvec   <- sample(K, n, replace=TRUE, prob = prior_k + 0.0001)
+  #
+  # Strategy: Update delta, and others separately all but delta.
 
   sigma2  <- 1/rgamma(1, prior_sigma2[1], prior_sigma2[2] )
 
   # fixed over the pixel-wise update
-  theta_Snew_list <- lapply(1:K, \(ki)
-                            solve(tX1X1_list[[ki]]/sigma2 + theta_priorSi))
-  chol_theta_Snew_list <- lapply(theta_Snew_list, chol)
+  #theta_Snew_list <- lapply(1:K, \(ki)
+  #                          solve(tX1X1_list[[ki]]/sigma2 + theta_priorSi))
+  #chol_theta_Snew_list <- lapply(theta_Snew_list, chol)
+  theta_Snew <- solve(tXX / sigma2 + theta_priorSi)
+  chol_theta_Snew <- chol(theta_Snew)
 
   # follow something
   history_k       <- matrix(NA, nrow = niter, ncol = n)
@@ -162,56 +201,66 @@ tj_fit_m0.3 <- function(x,
       ei2  <- ei^2
       eid  <- ei - theta[i, 3]
       eid2 <- eid^2
+
       # update k: square sums of before-after jump
       ss_upto  <- cumsum(ei2[-K])
       ss_after <- sum(eid2[-1]) - cumsum(c(0, eid2[-c(1,K)]) )
       SS     <- c(ss_upto + ss_after, sum(ei2)) # and without jump
       # Then the Potts smoothing
-      if(nnsizes[[i]]>0)
-        pott <- rowSums(G[, kvec[ nlist[[i]] ], drop=FALSE  ]) # n.of kth type neighbours times weight.
+      if(nnsizes[[i]]>0){
+        pott <- #if(neighbours_have_weights)
+          rowSums(nlist_weights[[i]] * G[, kvec[ nlist[[i]] ], drop=FALSE  ])
+                #else rowSums(G[, kvec[ nlist[[i]] ], drop=FALSE  ]) # n.of kth type neighbours times weight.
+      }
       else pott <- 0
+
+      #if(it > 200) browser()
       # Then the probability to be softmaxed
-      lp   <- -1/(2*sigma2) * SS  + pott + log( prior_k )
-      pv   <- exp( lp-max(lp) ) # shift to avoid singularities, softmax invariant
+      lp   <- -1/(2*sigma2) * SS  + pott + log_prior_k
+      pv   <- exp( lp-max(lp) ) # shift to avoid singularities, softmax is invariant
       pv   <- pv / sum(pv)
-      #if(any(is.na(pv))) browser()
-      knew <- sample(K, 1, prob = pv )
+      knew <-    sum(runif(1) > cumsum(pv)) + 1  # fast sample
       kvec[i] <- knew
       # track jump-anywhere probability
-      history_z[it,i] <- sum(pv[-K])
+      history_z[it, i] <- 1 - pv[K]
       #
       # Update linear parameters
-      tX1 <- tX1_list[[knew]]
-      theta_Snew <- theta_Snew_list[[knew]]
-      # Sample full covariance Normal using chol
-      chol_theta_Snew <- chol_theta_Snew_list[[knew]]
-      mnew            <- theta_Snew %*% ( tX1%*%yi /sigma2  + theta_priorQm)
+      # Sample full covariance Normal using chol.
+      # The residuals, given k and delta
+      yiprime            <- yi
+      yiprime[-(1:knew)] <- yiprime[-(1:knew)] - theta[i,3]
+      mnew            <- theta_Snew %*% ( tX%*%yiprime /sigma2  + theta_priorQm)
       thetanew        <- (rnorm(nrow(theta_Snew)) %*% chol_theta_Snew)[1,] + mnew
-      #print(mnew)
-      if(truncate_jump_at_mean)
-        while((truncate_jump_at_mean * thetanew[3]) < (truncate_jump_at_mean * theta_priorm[3]) )
-          thetanew        <- (rnorm(nrow(theta_Snew)) %*% chol_theta_Snew)[1,] + mnew
+      #
+      ei              <- c(yi - X %*% thetanew) # new residuals with possible jump removed
+
+      # then delta, given theta, truncated normal
+      ds2new          <- 1 / ( (K-knew)/sigma2 + 1/prior_delta$s2 )
+      dmnew           <- ds2new * ( sum(ei[-(1:knew)])/sigma2 + prior_delta$m/prior_delta$s2 )
+      deltanew        <-  rtnorm(dmnew, sqrt(ds2new) )
+      #if(knew < 11) browser()
+      #
+      thetanew        <- c(thetanew, deltanew)
       theta[i,]       <- thetanew
       #
-      #browser()
       # new residual square sum, for updating sigma
-      ei   <- c(yi - X %*% theta[i, -3]) # assuming 3d
       ei[-(1:knew)]  <- ei[-(1:knew)] - theta[i, 3]
-      resid2_sum <- resid2_sum + sum(ei^2)
+      resid2_sum     <- resid2_sum + sum(ei^2)
       #
       #if(it == 300 & i == 333) browser()
-    }
+    } # eo pixel wise iterations
     # Update sigma2
     a_new  <- prior_sigma2[1] + (n*K)/2
     b_new  <- prior_sigma2[2] + resid2_sum/2
     sigma2 <- 1/rgamma(1, a_new, b_new)
-    theta_Snew_list <- lapply(1:K, \(ki)
-                              solve(tX1X1_list[[ki]]/sigma2 + theta_priorSi))
-    chol_theta_Snew_list <- lapply(theta_Snew_list, chol)
-
+    #theta_Snew_list <- lapply(1:K, \(ki)
+    #                          solve(tX1X1_list[[ki]]/sigma2 + theta_priorSi))
+    #chol_theta_Snew_list <- lapply(theta_Snew_list, chol)
+    theta_Snew  <- solve(tXX/sigma2 + theta_priorSi)
+    chol_theta_Snew <- chol(theta_Snew)
 
     #
-    #if(verbose && (it %% B == 0)) cat2(sprintf("m0.3mc: %3.0f%%   \r", 100*it/niter))
+    #if(verbose && (it %% B == 0)) cat2(sprintf("m0.6mc: %3.0f%%   \r", 100*it/niter))
     if(verbose) print( timer1 <- looptimer(timer1) )
     history_k[it,]         <- kvec
     history_theta[it,,]    <- theta
@@ -249,23 +298,24 @@ tj_fit_m0.3 <- function(x,
     mutate( ignored = cell %in% cells_to_ignore )
 
   out <- list(took = Sys.time() - t0,
-       k = post_k,
-       z = post_z,
-       theta_m  = post_theta_m,
-       theta_Suppertri = post_theta_Suppertri,
-       sigma2 = post_sigma2,
-       hist_k = history_k,
-       hist_z = history_z,
-       hist_theta = history_theta,
-       hist_sigma2 = history_sigma2,
-       keep_hist = keep_hist,
-       niter = niter,
-       cell_info  = cell_info,
-       timesteps = timesteps,
-       ctrl = ctrl,
-       gdims = gdims,
-       truncate_jump_at_mean = truncate_jump_at_mean,
-       cells_ignored = cells_to_ignore)
+              k = post_k,
+              z = post_z,
+              theta_m  = post_theta_m,
+              theta_Suppertri = post_theta_Suppertri,
+              sigma2 = post_sigma2,
+              hist_k = history_k,
+              hist_z = history_z,
+              hist_theta = history_theta,
+              hist_sigma2 = history_sigma2,
+              keep_hist = keep_hist,
+              niter = niter,
+              cell_info  = cell_info,
+              timesteps = timesteps,
+              ctrl = ctrl,
+              gdims = gdims,
+              cells_ignored = cells_to_ignore,
+              neighbourhood = list(type = neighbourhood_type,
+                                   range = neighbourhood_range))
 
   class(out) <- c(is(out), "tj_fit_mc")
   out
@@ -273,26 +323,27 @@ tj_fit_m0.3 <- function(x,
 
 
 ######################################################################################
-#' Fit m0.3 alternative parametrisation
+#' Fit m0.6 alternative parametrisation
 #'
-#' Wrapper for m0.3 to be called with data and a single list-item of run-parameters
+#' Wrapper for m0.6 to be called with data and a single list-item of run-parameters
 #'
-#' @seealso [tj_cfg_m0.3] for creating required list.
+#' @seealso [tj_cfg_m0.6] for creating required list.
 #'
 #' @export
-tj_fit_m0.3s <- function(..., cfg = tj_cfg_m0.3()) {
-  do.call( tj_fit_m0.3, c(list(...), cfg) )
+tj_fit_m0.6s <- function(..., cfg = tj_cfg_m0.6()) {
+  do.call( tj_fit_m0.6, c(list(...), cfg) )
 }
 
 
-#' Compile paramaters for m0.3
+#' Compile paramaters for m0.6
 #'
 #' @export
-tj_cfg_m0.3 <- function(...) {
+tj_cfg_m0.6 <- function(...) {
   cfg0 <- list(
     niter = 1000,
     gamma = 0,
-    prior_theta  = list(m = c(a=0, b=0, d = 0), S = diag(1e5*c(1, 1, 1))), # 3d-Normal
+    prior_theta  = list(m = c(a=0, b=0), S = diag(1e5*c(1, 1))), # 2d-Normal
+    prior_delta = list(m = 0, s2 = 1e5, a = -Inf, b = Inf), # truncated normal
     prior_sigma2 = c(shape = 2, rate = 1), # inv-gamma
     prior_k = 0.5,
     verbose = FALSE,
@@ -300,7 +351,8 @@ tj_cfg_m0.3 <- function(...) {
     keep_hist = TRUE,
     cells_to_ignore = NULL,
     ignore_cells_with_na  =  TRUE,
-    truncate_jump_at_mean = 0
+    neighbourhood_type = "square",
+    neighbourhood_range = 1
   )
   #browser()
   new <- list(...)
