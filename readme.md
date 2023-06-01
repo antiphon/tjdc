@@ -65,3 +65,4 @@ The main fitting function is `tjdc::tj_fit_m0.6`, proceed there.
 For large problems it is recommended to use the file-storage options (see `tjdc::tj_fit_m0.6`).
 
 
+
