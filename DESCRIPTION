@@ -20,5 +20,12 @@ Suggests:
     rmarkdown
 VignetteBuilder: knitr
 Depends: 
-    R (>= 2.10)
+    R (>= 4.1),
+    doParallel,
+    sf,
+    stars,
+    dplyr,
+    tidyr,
+    foreach,
+    looptimer
 URL: https://antiphon.github.io/tjdc/

@@ -35,3 +35,10 @@ A simple linear trend model with a possible jump is estimated so that the jump e
 between neighbours.
 }
 
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://antiphon.github.io/tjdc/}
+}
+
+}
