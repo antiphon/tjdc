@@ -17,8 +17,15 @@ The described model was developed because no ready made solution was found for t
 In addition to CRAN dependencies, install the `looptimer` package.
 
 ```r
+# 
 devtools::install_github("antiphon/looptimer")
+
+# install.packages("doParallel", "foreach", "sf", "stars", "dplyr", "tidyr"))
+devtools::install_github("antiphon/tjdc")
 ```
+
+This package has a vignette, so consider using `build_vignettes = TRUE`. The vignette is also readable at the package site, 
+
 
 ## Input data
 
