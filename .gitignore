@@ -45,5 +45,5 @@ src/*.dll
 inst/doc
 /doc/
 /Meta/
-docs
+docs/
 
