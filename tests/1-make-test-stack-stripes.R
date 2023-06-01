@@ -40,8 +40,8 @@ for(i in 1:nt) {
 }
 #
 #### store
-test_stacks3 <- list(strip = s1, strip_rev = s2, jump = jump, jump_rev = jump2)
-save(test_stacks3, file="data/testcubes_easystripes.rda", compress = TRUE)
+easystripes <- list(strip = s1, strip_rev = s2, jump = jump, jump_rev = jump2)
+save(easystripes, file="data/easystripes.rda", compress = TRUE)
 
 
 
