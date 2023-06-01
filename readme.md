@@ -1,4 +1,4 @@
-# `tjdc`: R package for Trends and Jumps in DataCubes
+# `tjdc`: R package for Trends and Jumps in (flat) DataCubes
 
 
 ## Purpose
