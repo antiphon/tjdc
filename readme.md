@@ -23,7 +23,7 @@ devtools::install_github("antiphon/looptimer")
 ## Input data
 
 Consider a timeseries data, stored as a vector $y_i=(y_{i1},...,y_{iT})$ of values 
-$y_{it}\in\mathbf{R}$ recorded at times $t_1<...<t_T$. 
+$y_{it}\in\mathbf{R}$ recorded at times $t_1 < ... < t_T$. 
 
 Now consider that each timeseries $y_i$ is recorded on the nodes of (spatial) grid. Such as grid-time data array can be called a *datacube*: Dimension x-y of the cuboid describe location, and z describes time. 
 
