@@ -1,0 +1,261 @@
+---
+title: "Example analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{example_analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height= 6
+)
+```
+
+```{r setup, message=FALSE}
+library(tjdc)
+library(dplyr)
+library(tidyr)
+library(posterior)
+library(ggplot2)
+library(sf)
+
+theme_set(theme_bw())
+```
+
+# Data
+
+Use the internal example, which is a datacube with clear blocks of changepoints. 
+
+```{r}
+data("easystripes")
+
+x <- easystripes$strip
+# the truth
+j <- easystripes$jump
+# as data frame
+xdf <- tj_stars_to_data(x) 
+jdf <- as_tibble(j) |> rename(c_x = x, c_y = y, jump_after = values)
+
+# add truth
+df  <- xdf |> 
+  left_join(  jdf   )
+
+# Some examples
+df_ex <- df |> 
+  group_by(jump_after) |> 
+  filter( cell %in% sample(unique(cell), 30) )
+```
+
+This datacube has $T=11$ timepoints, and a clear structure of where the changes take place. 
+
+```{r, fig.width=6, fig.height=5}
+plot( x )
+```
+
+Here are examples of the series with different changepoints. Note that jumping after $t=11$ is the same as not having a changepoint.
+
+```{r, fig.width=6, fig.height=4}
+df_ex |> 
+  ggplot() +
+  geom_line(aes(time, value, group = cell)) +
+  facet_wrap(~jump_after)
+```
+
+## Fit the model
+
+The most up-to-date fitting function is at the moment called `tj_fit_m0.6` 
+
+```{r, cache=TRUE, message = FALSE}
+# set prior: negative jumps only.
+p_d <- list(m = 0, s2 = 1e4, a = -Inf, b = 0)
+
+fit0 <- tj_fit_m0.6(x, 
+                     prior_k = 0.9,
+                     niter = 1000,
+                     prior_delta = p_d,
+                     verbose = TRUE)
+```
+By default,
+
+* The pixel-to-pixel 'correlation' term $\gamma=0$ so *no* spatial interaction is set (see `gamma`)
+* The priors are pretty flat 
+  - see `prior_theta` for the linear model parameters (2D Gaussian i.i.d. over pixels)
+  - see `prior_delta` for the jump-size parameter, (1D truncated Gaussian i.i.d. over pixels)
+  - see `prior_sigma2` for residual variance (Gamma, one for all pixels)
+  - see `prior_k` the prior probability of jumps; $T$-vector or 1 value for  $1-P(no~jump)$
+* *all* of the MCMC traces are kept in the output (see `keep_hist` parameter in the help). 
+
+The proposed model is activated by setting  $\gamma\neq 0$:
+
+```{r, cache=TRUE, message = FALSE}
+fit1 <- tj_fit_m0.6(x, 
+                     gamma = 0.6,
+                     prior_k = 0.9,
+                     niter = 1000,
+                     prior_delta = p_d,
+                     verbose = TRUE)
+```
+
+
+
+There are many components in the result object, but most importantly the posteriors are in
+
+- `k`: The posterior probabilities for a jump, in format `k[t,i]`. So for example, the probability of no jump of pixel 1 when $T=11$ is in `k[1,11]`. The probability of a jump somewhere is also returned in component `z`
+- `theta_m`, `theta_Suppetri`: The posterior mean and (upper triangle of) covariance for the vector $(\theta,\delta)$ (regression + jump)
+- `sigma2`: Residual variance
+
+**Example**: Check convergence.
+
+```{r}
+# example cell:
+c <- 123
+tr <- cbind(fit1$hist_theta[,c,],
+            fit1$hist_z[,c],
+            fit1$hist_sigma2) |> 
+  as.data.frame() |>  
+  setNames(c("a", "b", "d", "P(jump)", "sigma2"))
+
+# use `posterior` etc.
+trp <- as_draws(tr[-(1:500),])
+summary( trp )
+```
+
+```{r}
+tr |> 
+  mutate(iter = 1:n()) |> 
+  pivot_longer(-iter)  |> 
+  ggplot() +
+  geom_line(aes(iter, value)) +
+  facet_wrap(~name, scale = "free_y")
+```
+
+
+**Example**: get the most likely jump times.
+
+```{r}
+pk0_most_likely <- apply(fit0$k, 2, which.max)
+pk1_most_likely <- apply(fit1$k, 2, which.max)
+pk0df           <- fit0$cell_info |> mutate(jump_after = pk0_most_likely)
+pk1df           <- fit1$cell_info |> mutate(jump_after = pk1_most_likely)
+```
+
+Compare to truth:
+
+```{r}
+# Gather estimates
+df_o <- bind_rows(pk0df |> mutate(model = "independent"),
+                  pk1df |> mutate(model = "interactions"),
+                  df    |> filter(time == 1) |> mutate(model = "truth")) |> 
+  mutate(est = factor(jump_after))
+
+# pretty color
+cc <- c(hcl.colors(10, palette = "PuOr"), "black")
+
+# Plot
+df_o |> 
+  ggplot() +
+  geom_raster(aes(c_x, c_y, fill = est), show.legend = FALSE) +
+  coord_fixed(expand = FALSE) +
+  scale_fill_manual(values = cc ) +
+  facet_wrap(~model, ncol = 1)
+```
+
+
+
+## Naive parallelisation
+
+Large dimension cube can be split into smaller cubes at the spatial domain (raster), and model fitted to each subset separately and independently, facilitating simple parallelisation. Due to the spatial dependency structure, it is a good idea to overlap the regions a bit. There are three useful functions here:
+
+1. `tj_divide_raster`: Create the geometry of the subsets
+1. `tj_fit_m0.x`: Fit a model to each subset, and handle collection and possible storage writing
+1. `tj_stitcher_m0.x`: Collect the results.
+
+First we want to create the mosaic.
+
+```{r, fig.height=2, fig.width=6}
+tiling <- tj_divide_raster(x, n = c(3, 1), buffer = c(1, 1))
+```
+
+The result contains info on the tiling. For example, `sf` polygons of the tiles are available. 
+
+```{r, fig.height=2, fig.width=6}
+tiling$poly |> 
+  ggplot() + 
+  geom_sf( data = st_bbox(x) |> st_as_sfc() , fill = "orange") + 
+  geom_sf(alpha = .5) +
+  geom_sf_text(aes(label = id)) +
+  expand_limits(y = c(-2, 8) )
+```
+
+Here we have split the raster bounding box into $3$-columns-$1$-rows separate boxes, with overlap of 2 pixels. 
+
+Then we use the wrapper to fit the model on each subset.
+
+```{r}
+fitm_l <- tj_fit_m0.x(x, 
+                    timevar = "z",
+                    tiling = tiling,
+                    niter = 1000,
+                    prior_k = 0.9,
+                    gamma = .6, 
+                    prior_delta = p_d,
+                    model_variant = "m0.6",
+                    ncores = 3)
+```
+
+By default all stuff is kept in memory. See the documentation on how to store each fit into custom file location.
+
+The result is a list of fits, and needs to be parsed together, particularly the pixels in the overlapping sections need to be made unique.
+
+
+```{r}
+# parse the results from separate tiles
+fitm <- tj_stitcher_m0.x(fitm_l, tiling)
+```
+
+Which has a similar structure as the earlier examples.
+
+```{r, fig.height=4}
+pkm_most_likely <- apply(fitm$k, 2, which.max)
+
+pkmdf <- fitm$cell_info |> 
+  # this table contains duplicate rows for cells in the overlaps
+  group_by(cell) |> 
+  filter(row_number() == 1) |> 
+  ungroup() |> 
+  left_join( 
+    tibble( cell = fitm$cells, jump_after = pkm_most_likely )  )
+  
+
+# Gather estimates
+df_o2 <- bind_rows(pk1df |> mutate(model = "full"),
+                   pkmdf |> mutate(model = "in parts") ) |> 
+  mutate(est = factor(jump_after))
+
+# Plot
+df_o2 |> 
+  ggplot() +
+  geom_raster(aes(c_x, c_y, fill = est), show.legend = FALSE) +
+  coord_fixed(expand = FALSE) +
+  scale_fill_manual(values = cc ) +
+  facet_wrap(~model, ncol = 1) 
+```
+
+Note that for parallel fits the variance parameters will be estimated separately.
+
+```{r}
+s2 <- fitm$hist_sigma2 |> as_draws()
+colnames(s2) <- paste0("sigma2_", 1:3)
+summary(s2)
+```
+
+
+
+
+
+

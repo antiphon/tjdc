@@ -24,10 +24,11 @@ mb <- microbenchmark(
 y <- sapply(1:100000, \(i) sample_fast_c(prob))
 
 
-par(mfrow=c(1,2))
+par(mfrow=c(2,1))
 boxplot(mb)
 plot(table(y)/length(y))
 points(1:11, prob)
+mb
 }
 
 #rtnorm
