@@ -106,9 +106,10 @@ fit1 <- tj_fit_m0.6(x,
 
 There are many components in the result object, but most importantly the posteriors are in
 
-- `k`: The posterior probabilities for a jump, in format `k[t,i]`. So for example, the probability of no jump of pixel 1 when $T=11$ is in `k[1,11]`. The probability of a jump somewhere is also returned in component `z`
+- `k`: The posterior probabilities for a jump, in format `k[t,i]`. So for example, the probability of no jump of pixel 2 when $T=11$ is in `k[11,2]`. The probability of a jump somewhere is also returned in component `z`
 - `theta_m`, `theta_Suppetri`: The posterior mean and (upper triangle of) covariance for the vector $(\theta,\delta)$ (regression + jump)
 - `sigma2`: Residual variance
+- traces start with `hist_`, e.g. `hist_z`, `hist_sigma2`
 
 **Example**: Check convergence.
 

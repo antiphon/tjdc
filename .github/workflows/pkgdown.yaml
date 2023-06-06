@@ -32,7 +32,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::pkgdown, local::. github::antiphon/looptimer
+          extra-packages: any::pkgdown, local::. github::antiphon/looptimer cran::posterior
           needs: website
 
       - name: Build site
