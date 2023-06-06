@@ -44,6 +44,8 @@ data("case_medium_zoom1_details")
 data("easystripes")
 ```
 
+The datasets analysed in the original paper are available at Zenodo, https://zenodo.org/record/8009800 .
+
 ## The model
 
 The package, or more specifically the model it implements, is designed to analyse datacubes assuming

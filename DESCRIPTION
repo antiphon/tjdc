@@ -1,7 +1,7 @@
 Package: tjdc
 Type: Package
 Title: Trends and Jumps in DataCubes
-Version: 0.9
+Version: 1.0
 Author: Tuomas Rajala
 Maintainer: Tuomas Rajala <tuomas.rajala@iki.fi>
 Description: Fit a statistical model for detecting pixel level trends and sudden 
